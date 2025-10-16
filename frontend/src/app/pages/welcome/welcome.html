@@ -1,0 +1,26 @@
+<div class="welcome-container">
+  <nz-card>
+    <div class="welcome-content">
+      <h1>欢迎使用管理系统</h1>
+      <p>您已成功登录系统</p>
+      <div class="action-buttons">
+        <button nz-button nzType="primary" routerLink="/users">
+          <span nz-icon nzType="team"></span>
+          用户管理
+        </button>
+        <button nz-button nzType="primary" routerLink="/roles">
+          <span nz-icon nzType="safety"></span>
+          角色管理
+        </button>
+        <button nz-button nzType="primary" routerLink="/permissions">
+          <span nz-icon nzType="safety-certificate"></span>
+          权限管理
+        </button>
+        <button nz-button nzType="default" (click)="logout()">
+          <span nz-icon nzType="logout"></span>
+          退出登录
+        </button>
+      </div>
+    </div>
+  </nz-card>
+</div>

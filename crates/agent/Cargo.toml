@@ -1,0 +1,59 @@
+[package]
+name = "agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "agent"
+path = "src/main.rs"
+
+[dependencies]
+# 内部依赖
+common = { path = "../common" }
+
+# Async runtime
+tokio.workspace = true
+tokio-util.workspace = true
+tokio-stream = "0.1"
+
+# WebSocket
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Async traits
+async-trait = "0.1"
+
+# Configuration
+config.workspace = true
+dotenvy.workspace = true
+
+# Time
+chrono.workspace = true
+
+# UUID
+uuid.workspace = true
+
+# Metrics
+prometheus.workspace = true
+
+# System information
+sysinfo = "0.32"
+hostname = "0.4"
+
+# Libvirt (必选，需要系统安装 libvirt-dev)
+virt = { workspace = true }
+

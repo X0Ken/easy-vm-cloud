@@ -1,0 +1,344 @@
+<div class="network-container">
+  <nz-card>
+    <div class="page-header">
+      <div class="header-content">
+        <h2>网络管理</h2>
+        <p>管理系统中的网络、子网和IP地址分配</p>
+      </div>
+      <div class="header-actions">
+        <button 
+          *ngIf="activeTab === 'networks'" 
+          nz-button 
+          nzType="primary" 
+          (click)="showCreateNetworkModal()"
+        >
+          <span nz-icon nzType="plus"></span>
+          新建网络
+        </button>
+      </div>
+    </div>
+
+    <!-- 标签页切换 -->
+    <nz-tabset [(nzSelectedIndex)]="activeTabIndex" (nzSelectedIndexChange)="onTabChange($event)">
+      <!-- 网络管理标签页 -->
+      <nz-tab nzTitle="网络管理" nzValue="networks">
+        <nz-spin [nzSpinning]="loading">
+          <nz-table 
+            #networksTable 
+            [nzData]="networks"
+            [nzPageSize]="pagination.per_page"
+            [nzPageIndex]="pagination.current_page"
+            [nzTotal]="pagination.total"
+            [nzFrontPagination]="false"
+            [nzShowSizeChanger]="true"
+            [nzShowQuickJumper]="true"
+            [nzShowTotal]="totalTemplate"
+            (nzPageIndexChange)="onPageIndexChange($event)"
+            (nzPageSizeChange)="onPageSizeChange($event)"
+          >
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>类型</th>
+                <th>CIDR</th>
+                <th>网关</th>
+                <th>VLAN ID</th>
+                <th>MTU</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let network of networks">
+                <td>{{ network.id }}</td>
+                <td>
+                  <strong>{{ network.name }}</strong>
+                </td>
+                <td>
+                  <nz-tag [nzColor]="getTypeColor(network.type)">
+                    {{ getTypeText(network.type) }}
+                  </nz-tag>
+                </td>
+                <td>
+                  <span class="cidr-info">{{ network.cidr }}</span>
+                </td>
+                <td>
+                  <span class="gateway-info">{{ network.gateway }}</span>
+                </td>
+                <td>
+                  <span class="vlan-info" *ngIf="network.vlan_id; else noVlan">
+                    {{ network.vlan_id }}
+                  </span>
+                  <ng-template #noVlan>
+                    <span class="no-data">无</span>
+                  </ng-template>
+                </td>
+                <td>
+                  <span class="mtu-info">{{ network.mtu }}</span>
+                </td>
+                <td>
+                  <nz-tag [nzColor]="getStatusColor(network.status)">
+                    {{ getStatusText(network.status) }}
+                  </nz-tag>
+                </td>
+                <td>
+                  <span class="time-info">{{ network.created_at | date:'yyyy-MM-dd HH:mm' }}</span>
+                </td>
+                <td>
+                  <div class="action-buttons">
+                    <button nz-button nzType="link" nzSize="small" (click)="showEditNetworkModal(network)" class="action-btn edit-btn">
+                      <span nz-icon nzType="edit"></span>
+                      编辑
+                    </button>
+                    <button nz-button nzType="link" nzSize="small" (click)="showIPAllocationsModal(network)" class="action-btn view-btn">
+                      <span nz-icon nzType="eye"></span>
+                      IP分配
+                    </button>
+                    <button 
+                      nz-button 
+                      nzType="link" 
+                      nzSize="small" 
+                      nzDanger 
+                      class="action-btn delete-btn"
+                      nz-popconfirm
+                      nzPopconfirmTitle="确定要删除这个网络吗？"
+                      nzOkText="确定"
+                      nzCancelText="取消"
+                      (nzOnConfirm)="deleteNetwork(network)"
+                    >
+                      <span nz-icon nzType="delete"></span>
+                      删除
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </nz-table>
+        </nz-spin>
+      </nz-tab>
+
+
+    </nz-tabset>
+  </nz-card>
+</div>
+
+<!-- 创建/编辑网络模态框 -->
+<nz-modal
+  *ngIf="activeTab === 'networks'"
+  [(nzVisible)]="isModalVisible"
+  [nzTitle]="isEditMode ? '编辑网络' : '新建网络'"
+  [nzWidth]="600"
+  (nzOnCancel)="handleCancel()"
+  (nzOnOk)="handleOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">网络名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入网络名称" 
+            [(ngModel)]="networkFormData.name"
+            name="name"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="!isEditMode">
+        <nz-form-label [nzSpan]="6">网络类型</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            nzPlaceHolder="请选择网络类型" 
+            [(ngModel)]="networkFormData.type"
+            name="type"
+          >
+            <nz-option nzValue="bridge" nzLabel="Linux Bridge"></nz-option>
+            <nz-option nzValue="ovs" nzLabel="Open vSwitch (暂不可用)" nzDisabled="true"></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="!isEditMode">
+        <nz-form-label [nzSpan]="6">CIDR</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="例如: 192.168.1.0/24" 
+            [(ngModel)]="networkFormData.cidr"
+            name="cidr"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="!isEditMode">
+        <nz-form-label [nzSpan]="6">网关</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="例如: 192.168.1.1" 
+            [(ngModel)]="networkFormData.gateway"
+            name="gateway"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="!isEditMode">
+        <nz-form-label [nzSpan]="6">VLAN ID</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-input-number 
+            [(ngModel)]="networkFormData.vlan_id"
+            name="vlan_id"
+            [nzMin]="1"
+            [nzMax]="4094"
+            [nzStep]="1"
+            nzPlaceHolder="请输入VLAN ID"
+            style="width: 100%"
+          ></nz-input-number>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="!isEditMode">
+        <nz-form-label [nzSpan]="6">MTU</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-input-number 
+            [(ngModel)]="networkFormData.mtu"
+            name="mtu"
+            [nzMin]="576"
+            [nzMax]="9000"
+            [nzStep]="1"
+            nzPlaceHolder="请输入MTU值"
+            style="width: 100%"
+          ></nz-input-number>
+        </nz-form-control>
+      </nz-form-item>
+
+      <!-- 编辑模式下显示只读信息 -->
+      <div *ngIf="isEditMode" class="readonly-info">
+        <nz-form-item>
+          <nz-form-label [nzSpan]="6">网络类型</nz-form-label>
+          <nz-form-control [nzSpan]="18">
+            <nz-tag [nzColor]="getTypeColor(currentNetwork?.type || '')">
+              {{ getTypeText(currentNetwork?.type || '') }}
+            </nz-tag>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label [nzSpan]="6">CIDR</nz-form-label>
+          <nz-form-control [nzSpan]="18">
+            <span class="readonly-value">{{ currentNetwork?.cidr }}</span>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label [nzSpan]="6">网关</nz-form-label>
+          <nz-form-control [nzSpan]="18">
+            <span class="readonly-value">{{ currentNetwork?.gateway }}</span>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label [nzSpan]="6">VLAN ID</nz-form-label>
+          <nz-form-control [nzSpan]="18">
+            <span class="readonly-value">{{ currentNetwork?.vlan_id || '无' }}</span>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label [nzSpan]="6">MTU</nz-form-label>
+          <nz-form-control [nzSpan]="18">
+            <span class="readonly-value">{{ currentNetwork?.mtu }}</span>
+          </nz-form-control>
+        </nz-form-item>
+      </div>
+
+    </form>
+  </div>
+</nz-modal>
+
+
+<!-- IP分配模态框 -->
+<nz-modal
+  [(nzVisible)]="ipAllocationsModalVisible"
+  nzTitle="已使用IP地址 - {{ currentNetwork?.name }}"
+  nzWidth="1200px"
+  [nzFooter]="null"
+  (nzOnCancel)="handleIPAllocationsModalCancel()"
+>
+  <div *nzModalContent class="ip-allocations-modal">
+    <div class="modal-header">
+      <div class="network-info">
+        <h4>{{ currentNetwork?.name }}</h4>
+        <p>CIDR: {{ currentNetwork?.cidr }} | 网关: {{ currentNetwork?.gateway }}</p>
+      </div>
+    </div>
+
+    <nz-spin [nzSpinning]="ipAllocationsLoading">
+      <nz-table 
+        #ipAllocationsTable 
+        [nzData]="ipAllocations"
+        [nzPageSize]="ipAllocationsPagination.per_page"
+        [nzPageIndex]="ipAllocationsPagination.current_page"
+        [nzTotal]="ipAllocationsPagination.total"
+        [nzFrontPagination]="false"
+        [nzShowSizeChanger]="true"
+        [nzShowQuickJumper]="true"
+        [nzShowTotal]="ipAllocationsTotalTemplate"
+        (nzPageIndexChange)="onIPAllocationsPageIndexChange($event)"
+        (nzPageSizeChange)="onIPAllocationsPageSizeChange($event)"
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>IP地址</th>
+            <th>状态</th>
+            <th>关联虚拟机</th>
+            <th>分配时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let allocation of ipAllocations">
+            <td>{{ allocation.id }}</td>
+            <td>
+              <span class="ip-address">{{ allocation.ip_address }}</span>
+            </td>
+            <td>
+              <nz-tag [nzColor]="getStatusColor(allocation.status)">
+                {{ getStatusText(allocation.status) }}
+              </nz-tag>
+            </td>
+            <td>
+              <div class="vm-info" *ngIf="allocation.vm_name; else noVm">
+                <strong>{{ allocation.vm_name }}</strong>
+                <br>
+                <small class="vm-id">ID: {{ allocation.vm_id }}</small>
+              </div>
+              <ng-template #noVm>
+                <span class="no-data">未关联</span>
+              </ng-template>
+            </td>
+            <td>
+              <span class="time-info" *ngIf="allocation.allocated_at; else notAllocated">
+                {{ allocation.allocated_at | date:'yyyy-MM-dd HH:mm' }}
+              </span>
+              <ng-template #notAllocated>
+                <span class="no-data">未分配</span>
+              </ng-template>
+            </td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </nz-spin>
+  </div>
+</nz-modal>
+
+<ng-template #totalTemplate let-total>
+  共 {{ total }} 条记录
+</ng-template>
+
+<ng-template #ipAllocationsTotalTemplate let-total>
+  共 {{ total }} 条已使用IP记录
+</ng-template>

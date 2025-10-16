@@ -1,0 +1,45 @@
+<div class="profile-container">
+  <nz-card>
+    <div class="page-header">
+      <h2>个人信息</h2>
+      <p>查看和管理您的个人信息</p>
+    </div>
+
+    <nz-descriptions nzTitle="基本信息" [nzColumn]="2" nzBordered>
+      <nz-descriptions-item nzTitle="用户ID">{{ userInfo.id }}</nz-descriptions-item>
+      <nz-descriptions-item nzTitle="用户名">{{ userInfo.username }}</nz-descriptions-item>
+      <nz-descriptions-item nzTitle="邮箱">{{ userInfo.email }}</nz-descriptions-item>
+      <nz-descriptions-item nzTitle="状态">
+        <nz-tag [nzColor]="userInfo.is_active ? 'green' : 'red'">
+          {{ userInfo.is_active ? '活跃' : '禁用' }}
+        </nz-tag>
+      </nz-descriptions-item>
+    </nz-descriptions>
+
+    <nz-descriptions nzTitle="角色信息" [nzColumn]="1" nzBordered style="margin-top: 24px;">
+      <nz-descriptions-item nzTitle="角色">
+        <div class="tags-container">
+          <nz-tag 
+            *ngFor="let role of userInfo.roles" 
+            nzColor="blue"
+          >
+            {{ role }}
+          </nz-tag>
+        </div>
+      </nz-descriptions-item>
+    </nz-descriptions>
+
+    <nz-descriptions nzTitle="权限信息" [nzColumn]="1" nzBordered style="margin-top: 24px;">
+      <nz-descriptions-item nzTitle="权限">
+        <div class="tags-container">
+          <nz-tag 
+            *ngFor="let permission of userInfo.permissions" 
+            nzColor="green"
+          >
+            {{ permission }}
+          </nz-tag>
+        </div>
+      </nz-descriptions-item>
+    </nz-descriptions>
+  </nz-card>
+</div>

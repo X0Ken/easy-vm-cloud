@@ -1,0 +1,158 @@
+<div class="users-container">
+  <nz-card>
+    <div class="page-header">
+      <div class="header-content">
+        <h2>用户管理</h2>
+        <p>管理系统中的所有用户</p>
+      </div>
+      <button nz-button nzType="primary" (click)="showCreateModal()">
+        <span nz-icon nzType="plus"></span>
+        新建用户
+      </button>
+    </div>
+
+    <nz-spin [nzSpinning]="loading">
+      <nz-table 
+        #basicTable 
+        [nzData]="users"
+        [nzPageSize]="pagination.per_page"
+        [nzPageIndex]="pagination.current_page"
+        [nzTotal]="pagination.total"
+        [nzFrontPagination]="false"
+        [nzShowSizeChanger]="true"
+        [nzShowQuickJumper]="true"
+        [nzShowTotal]="totalTemplate"
+        (nzPageIndexChange)="onPageIndexChange($event)"
+        (nzPageSizeChange)="onPageSizeChange($event)"
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>用户名</th>
+            <th>邮箱</th>
+            <th>状态</th>
+            <th>角色</th>
+            <th>权限</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let user of users">
+            <td>{{ user.id }}</td>
+            <td>
+              <strong>{{ user.username }}</strong>
+            </td>
+            <td>{{ user.email }}</td>
+            <td>
+              <nz-tag [nzColor]="getStatusColor(user.is_active)">
+                {{ getStatusText(user.is_active) }}
+              </nz-tag>
+            </td>
+            <td>
+              <div class="tags-container">
+                <nz-tag 
+                  *ngFor="let role of user.roles" 
+                  nzColor="blue"
+                  class="role-tag"
+                >
+                  {{ role }}
+                </nz-tag>
+                <span *ngIf="user.roles.length === 0" class="no-data">无角色</span>
+              </div>
+            </td>
+            <td>
+              <div class="permissions-container">
+                <nz-tag 
+                  *ngFor="let permission of user.permissions.slice(0, 3)" 
+                  nzColor="green"
+                  class="permission-tag"
+                >
+                  {{ permission }}
+                </nz-tag>
+                <nz-tag 
+                  *ngIf="user.permissions.length > 3" 
+                  nzColor="orange"
+                >
+                  +{{ user.permissions.length - 3 }} 更多
+                </nz-tag>
+                <span *ngIf="user.permissions.length === 0" class="no-data">无权限</span>
+              </div>
+            </td>
+            <td>
+              <button nz-button nzType="link" nzSize="small" (click)="showEditModal(user)">
+                <span nz-icon nzType="edit"></span>
+                编辑
+              </button>
+              <button nz-button nzType="link" nzSize="small" nzDanger (click)="deleteUser(user)">
+                <span nz-icon nzType="delete"></span>
+                删除
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </nz-spin>
+  </nz-card>
+</div>
+
+<!-- 创建/编辑用户模态框 -->
+<nz-modal
+  [(nzVisible)]="isModalVisible"
+  [nzTitle]="isEditMode ? '编辑用户' : '新建用户'"
+  (nzOnCancel)="handleCancel()"
+  (nzOnOk)="handleOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">用户名</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入用户名" 
+            [(ngModel)]="formData.username"
+            name="username"
+            [disabled]="isEditMode"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">邮箱</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入邮箱" 
+            [(ngModel)]="formData.email"
+            name="email"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="!isEditMode">
+        <nz-form-label [nzSpan]="6">密码</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            type="password"
+            placeholder="请输入密码" 
+            [(ngModel)]="formData.password"
+            name="password"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="isEditMode">
+        <nz-form-label [nzSpan]="6">状态</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-switch [(ngModel)]="formData.is_active" name="is_active"></nz-switch>
+          <span style="margin-left: 8px;">{{ formData.is_active ? '活跃' : '禁用' }}</span>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </div>
+</nz-modal>
+
+<ng-template #totalTemplate let-total>
+  共 {{ total }} 条记录
+</ng-template>

@@ -1,0 +1,173 @@
+<div class="departments-container">
+  <nz-card nzTitle="部门管理" [nzExtra]="extraTemplate">
+    <ng-template #extraTemplate>
+      <button nz-button nzType="primary" (click)="showCreateModal()">
+        <i nz-icon nzType="plus"></i>
+        新建部门
+      </button>
+    </ng-template>
+
+    <nz-tabs [(nzSelectedIndex)]="selectedTabIndex" (nzSelectedIndexChange)="onTabChange($event)">
+      <!-- 列表视图 -->
+      <nz-tab nzTitle="列表视图">
+        <nz-spin [nzSpinning]="loading">
+          <nz-table
+            #basicTable
+            [nzData]="departments"
+            [nzLoading]="loading"
+            nzSize="middle"
+            [nzScroll]="{ x: '800px' }">
+            <thead>
+              <tr>
+                <th>部门名称</th>
+                <th>描述</th>
+                <th>父部门</th>
+                <th>部门经理</th>
+                <th>排序</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of basicTable.data">
+                <td>{{ item.name }}</td>
+                <td>{{ item.description || '-' }}</td>
+                <td>{{ getParentDepartmentName(item.parent_id) }}</td>
+                <td>{{ getManagerName(item.manager_id) }}</td>
+                <td>{{ item.sort_order }}</td>
+                <td>{{ item.created_at | date:'yyyy-MM-dd HH:mm' }}</td>
+                <td>
+                  <button
+                    nz-button
+                    nzType="link"
+                    nzSize="small"
+                    (click)="showEditModal(item)">
+                    编辑
+                  </button>
+                  <nz-divider nzType="vertical"></nz-divider>
+                  <button
+                    nz-button
+                    nzType="link"
+                    nzDanger
+                    nzSize="small"
+                    nz-popconfirm
+                    nzPopconfirmTitle="确定要删除这个部门吗？"
+                    (nzOnConfirm)="deleteDepartment(item)">
+                    删除
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </nz-table>
+        </nz-spin>
+      </nz-tab>
+
+      <!-- 树形视图 -->
+      <nz-tab nzTitle="树形视图">
+        <nz-spin [nzSpinning]="treeLoading">
+          <div class="tree-container">
+            <div *ngIf="!treeLoading && !treeDataLoaded" class="empty-state">
+              <p>点击上方标签页切换到树形视图以加载数据</p>
+            </div>
+            <nz-tree
+              *ngIf="treeData.length > 0"
+              [nzData]="treeData"
+              [nzShowIcon]="false"
+              [nzExpandedKeys]="[]"
+              [nzSelectedKeys]="[]"
+              (nzClick)="onTreeNodeClick($event)">
+            </nz-tree>
+          </div>
+        </nz-spin>
+      </nz-tab>
+    </nz-tabs>
+  </nz-card>
+
+  <!-- 创建/编辑部门模态框 -->
+  <nz-modal
+    [(nzVisible)]="isModalVisible"
+    [nzTitle]="isEditMode ? '编辑部门' : '新建部门'"
+    (nzOnCancel)="handleCancel()"
+    (nzOnOk)="handleOk()"
+    nzWidth="500px">
+
+    <ng-container *nzModalContent>
+      <form nz-form nzLayout="vertical">
+        <nz-form-item>
+          <nz-form-label nzRequired>部门名称</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              [(ngModel)]="formData.name"
+              name="name"
+              placeholder="请输入部门名称"
+              maxlength="100"
+              required />
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>部门描述</nz-form-label>
+          <nz-form-control>
+            <textarea
+              nz-input
+              [(ngModel)]="formData.description"
+              name="description"
+              placeholder="请输入部门描述"
+              maxlength="500"
+              rows="3">
+            </textarea>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>父部门</nz-form-label>
+          <nz-form-control>
+            <nz-select
+              [(ngModel)]="formData.parent_id"
+              name="parent_id"
+              nzPlaceHolder="请选择父部门"
+              nzAllowClear>
+              <nz-option
+                *ngFor="let dept of departments"
+                [nzValue]="dept.id"
+                [nzLabel]="dept.name">
+              </nz-option>
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>部门经理</nz-form-label>
+          <nz-form-control>
+            <nz-select
+              [(ngModel)]="formData.manager_id"
+              name="manager_id"
+              nzPlaceHolder="请选择部门经理"
+              nzAllowClear
+              nzShowSearch>
+              <nz-option
+                *ngFor="let user of users"
+                [nzValue]="user.id"
+                [nzLabel]="user.username">
+              </nz-option>
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>排序序号</nz-form-label>
+          <nz-form-control>
+            <nz-input-number
+              [(ngModel)]="formData.sort_order"
+              name="sort_order"
+              [nzMin]="0"
+              [nzMax]="9999"
+              style="width: 100%">
+            </nz-input-number>
+          </nz-form-control>
+        </nz-form-item>
+      </form>
+    </ng-container>
+  </nz-modal>
+</div>

@@ -1,0 +1,86 @@
+# Web Admin 管理系统 - 开发环境 Docker Compose 配置
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-easy_vm_cloud}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d easy_vm_cloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Rust 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-easy_vm_cloud}
+      JWT_SECRET: dev-jwt-secret-key-change-in-production
+      JWT_EXPIRATION: 24h
+      RUST_LOG: debug
+      RUST_BACKTRACE: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - network
+    volumes:
+      - ./backend:/app:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Angular 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# 网络配置
+networks:
+  network:
+    driver: bridge
+    name: network
+
+# 数据卷配置
+volumes:
+  postgres_data:
+    name: postgres-data

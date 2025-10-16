@@ -1,0 +1,32 @@
+.profile-container {
+  background: #f0f2f5;
+  min-height: 100vh;
+}
+
+.page-header {
+  margin-bottom: 24px;
+  
+  h2 {
+    color: #1890ff;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  
+  p {
+    color: #666;
+    margin: 0;
+  }
+}
+
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .profile-container {
+    padding: 16px;
+  }
+}

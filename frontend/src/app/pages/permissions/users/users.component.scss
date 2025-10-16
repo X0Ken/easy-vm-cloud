@@ -1,0 +1,70 @@
+.users-container {
+  background: #f0f2f5;
+  min-height: 100vh;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  
+  .header-content {
+    h2 {
+      color: #1890ff;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    
+    p {
+      color: #666;
+      margin: 0;
+    }
+  }
+}
+
+.tags-container,
+.permissions-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.role-tag,
+.permission-tag {
+  font-size: 12px;
+  margin: 0;
+}
+
+.no-data {
+  color: #999;
+  font-size: 12px;
+  font-style: italic;
+}
+
+// 表格样式优化
+::ng-deep .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+::ng-deep .ant-table-tbody > tr:hover > td {
+  background: #f5f5f5;
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .users-container {
+    padding: 16px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    
+    .header-content h2 {
+      font-size: 20px;
+    }
+  }
+}

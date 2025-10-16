@@ -1,0 +1,174 @@
+<div class="roles-container">
+  <nz-card>
+    <div class="page-header">
+      <div class="header-content">
+        <h2>角色管理</h2>
+        <p>管理系统中的所有角色</p>
+      </div>
+      <button nz-button nzType="primary" (click)="showCreateModal()">
+        <span nz-icon nzType="plus"></span>
+        新建角色
+      </button>
+    </div>
+
+    <nz-spin [nzSpinning]="loading">
+      <nz-table 
+        #basicTable 
+        [nzData]="roles"
+        [nzPageSize]="pagination.per_page"
+        [nzPageIndex]="pagination.current_page"
+        [nzTotal]="pagination.total"
+        [nzFrontPagination]="false"
+        [nzShowSizeChanger]="true"
+        [nzShowQuickJumper]="true"
+        [nzShowTotal]="totalTemplate"
+        (nzPageIndexChange)="onPageIndexChange($event)"
+        (nzPageSizeChange)="onPageSizeChange($event)"
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>角色名称</th>
+            <th>描述</th>
+            <th>状态</th>
+            <th>权限</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let role of roles">
+            <td>{{ role.id }}</td>
+            <td>
+              <strong>{{ role.name }}</strong>
+            </td>
+            <td>{{ role.description }}</td>
+            <td>
+              <nz-tag [nzColor]="getStatusColor(role.is_active)">
+                {{ getStatusText(role.is_active) }}
+              </nz-tag>
+            </td>
+            <td>
+              <div class="permissions-container">
+                <nz-tag 
+                  *ngFor="let permission of role.permissions.slice(0, 3)" 
+                  nzColor="green"
+                  class="permission-tag"
+                >
+                  {{ permission }}
+                </nz-tag>
+                <nz-tag 
+                  *ngIf="role.permissions.length > 3" 
+                  nzColor="orange"
+                >
+                  +{{ role.permissions.length - 3 }} 更多
+                </nz-tag>
+                <span *ngIf="role.permissions.length === 0" class="no-data">无权限</span>
+              </div>
+            </td>
+            <td>
+              <button nz-button nzType="link" nzSize="small" (click)="showEditModal(role)">
+                <span nz-icon nzType="edit"></span>
+                编辑
+              </button>
+              <button nz-button nzType="link" nzSize="small" (click)="showPermissionModal(role)">
+                <span nz-icon nzType="safety-certificate"></span>
+                权限
+              </button>
+              <button nz-button nzType="link" nzSize="small" nzDanger (click)="deleteRole(role)">
+                <span nz-icon nzType="delete"></span>
+                删除
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </nz-spin>
+  </nz-card>
+</div>
+
+<!-- 创建/编辑角色模态框 -->
+<nz-modal
+  [(nzVisible)]="isModalVisible"
+  [nzTitle]="isEditMode ? '编辑角色' : '新建角色'"
+  (nzOnCancel)="handleCancel()"
+  (nzOnOk)="handleOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">角色名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入角色名称" 
+            [(ngModel)]="formData.name"
+            name="name"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">描述</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <textarea 
+            nz-input 
+            placeholder="请输入角色描述" 
+            [(ngModel)]="formData.description"
+            name="description"
+            [nzAutosize]="{ minRows: 3, maxRows: 5 }"
+          ></textarea>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="isEditMode">
+        <nz-form-label [nzSpan]="6">状态</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-switch [(ngModel)]="formData.is_active" name="is_active"></nz-switch>
+          <span style="margin-left: 8px;">{{ formData.is_active ? '活跃' : '禁用' }}</span>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </div>
+</nz-modal>
+
+<ng-template #totalTemplate let-total>
+  共 {{ total }} 条记录
+</ng-template>
+
+<!-- 权限管理模态框 -->
+<nz-modal
+  [(nzVisible)]="isPermissionModalVisible"
+  [nzTitle]="'管理角色权限 - ' + (currentRole?.name || '')"
+  (nzOnCancel)="handlePermissionCancel()"
+  (nzOnOk)="handlePermissionOk()"
+>
+  <div *nzModalContent>
+    <div style="margin-bottom: 16px;">
+      <p>为角色 <strong>{{ currentRole?.name }}</strong> 分配权限：</p>
+    </div>
+    
+    <div style="max-height: 400px; overflow-y: auto;">
+      <div *ngFor="let permission of allPermissions" style="margin-bottom: 8px; padding: 8px; border: 1px solid #f0f0f0; border-radius: 4px;">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+          <input 
+            type="checkbox" 
+            [checked]="selectedPermissions.includes(permission.name)"
+            (change)="togglePermission(permission.name)"
+            style="margin-right: 8px;"
+          />
+          <div style="display: flex; align-items: center;">
+            <span nz-icon nzType="safety-certificate" style="margin-right: 8px;"></span>
+            <div>
+              <div style="font-weight: 500;">{{ permission.name }}</div>
+              <div style="font-size: 12px; color: #999;">{{ permission.description }}</div>
+              <div style="font-size: 12px;">
+                <nz-tag nzSize="small" [nzColor]="getResourceColor(permission.resource)">{{ permission.resource }}</nz-tag>
+                <nz-tag nzSize="small" [nzColor]="getActionColor(permission.action)">{{ permission.action }}</nz-tag>
+              </div>
+            </div>
+          </div>
+        </label>
+      </div>
+    </div>
+  </div>
+</nz-modal>

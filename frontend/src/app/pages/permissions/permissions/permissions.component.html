@@ -1,0 +1,159 @@
+<div class="permissions-container">
+  <nz-card>
+    <div class="page-header">
+      <div class="header-content">
+        <h2>权限管理</h2>
+        <p>管理系统中的所有权限</p>
+      </div>
+      <button nz-button nzType="primary" (click)="showCreateModal()">
+        <span nz-icon nzType="plus"></span>
+        新建权限
+      </button>
+    </div>
+
+    <nz-spin [nzSpinning]="loading">
+      <nz-table 
+        #basicTable 
+        [nzData]="permissions"
+        [nzPageSize]="pagination.per_page"
+        [nzPageIndex]="pagination.current_page"
+        [nzTotal]="pagination.total"
+        [nzFrontPagination]="false"
+        [nzShowSizeChanger]="true"
+        [nzShowQuickJumper]="true"
+        [nzShowTotal]="totalTemplate"
+        (nzPageIndexChange)="onPageIndexChange($event)"
+        (nzPageSizeChange)="onPageSizeChange($event)"
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>权限名称</th>
+            <th>描述</th>
+            <th>资源</th>
+            <th>操作</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let permission of permissions">
+            <td>{{ permission.id }}</td>
+            <td>
+              <strong>{{ permission.name }}</strong>
+            </td>
+            <td>{{ permission.description }}</td>
+            <td>
+              <nz-tag [nzColor]="getResourceColor(permission.resource)">
+                {{ permission.resource }}
+              </nz-tag>
+            </td>
+            <td>
+              <nz-tag [nzColor]="getActionColor(permission.action)">
+                {{ permission.action }}
+              </nz-tag>
+            </td>
+            <td>
+              <nz-tag [nzColor]="getStatusColor(permission.is_active)">
+                {{ getStatusText(permission.is_active) }}
+              </nz-tag>
+            </td>
+            <td>
+              <button nz-button nzType="link" nzSize="small" (click)="showEditModal(permission)">
+                <span nz-icon nzType="edit"></span>
+                编辑
+              </button>
+              <button nz-button nzType="link" nzSize="small" nzDanger (click)="deletePermission(permission)">
+                <span nz-icon nzType="delete"></span>
+                删除
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </nz-spin>
+  </nz-card>
+</div>
+
+<!-- 创建/编辑权限模态框 -->
+<nz-modal
+  [(nzVisible)]="isModalVisible"
+  [nzTitle]="isEditMode ? '编辑权限' : '新建权限'"
+  (nzOnCancel)="handleCancel()"
+  (nzOnOk)="handleOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">权限名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入权限名称，如: user:read" 
+            [(ngModel)]="formData.name"
+            name="name"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">描述</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <textarea 
+            nz-input 
+            placeholder="请输入权限描述" 
+            [(ngModel)]="formData.description"
+            name="description"
+            [nzAutosize]="{ minRows: 3, maxRows: 5 }"
+          ></textarea>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">资源</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            [(ngModel)]="formData.resource" 
+            name="resource"
+            placeholder="请选择资源"
+          >
+            <nz-option 
+              *ngFor="let resource of resources" 
+              [nzValue]="resource" 
+              [nzLabel]="resource"
+            ></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">操作</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            [(ngModel)]="formData.action" 
+            name="action"
+            placeholder="请选择操作"
+          >
+            <nz-option 
+              *ngFor="let action of actions" 
+              [nzValue]="action" 
+              [nzLabel]="action"
+            ></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="isEditMode">
+        <nz-form-label [nzSpan]="6">状态</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-switch [(ngModel)]="formData.is_active" name="is_active"></nz-switch>
+          <span style="margin-left: 8px;">{{ formData.is_active ? '活跃' : '禁用' }}</span>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </div>
+</nz-modal>
+
+<ng-template #totalTemplate let-total>
+  共 {{ total }} 条记录
+</ng-template>

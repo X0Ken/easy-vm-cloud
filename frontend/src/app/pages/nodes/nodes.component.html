@@ -1,0 +1,254 @@
+<div class="nodes-container">
+  <nz-card>
+    <div class="page-header">
+      <div class="header-content">
+        <h2>节点管理</h2>
+        <p>管理系统中的所有计算节点</p>
+      </div>
+      <button nz-button nzType="primary" (click)="showCreateModal()">
+        <span nz-icon nzType="plus"></span>
+        新建节点
+      </button>
+    </div>
+
+
+    <nz-spin [nzSpinning]="loading">
+      <nz-table 
+        #basicTable 
+        [nzData]="nodes"
+        [nzPageSize]="pagination.per_page"
+        [nzPageIndex]="pagination.current_page"
+        [nzTotal]="pagination.total"
+        [nzFrontPagination]="false"
+        [nzShowSizeChanger]="true"
+        [nzShowQuickJumper]="true"
+        [nzShowTotal]="totalTemplate"
+        (nzPageIndexChange)="onPageIndexChange($event)"
+        (nzPageSizeChange)="onPageSizeChange($event)"
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>节点名称</th>
+            <th>IP地址</th>
+            <th>状态</th>
+            <th>CPU核心数</th>
+            <th>内存总量</th>
+            <th>最后心跳</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let node of nodes">
+            <td>{{ node.id }}</td>
+            <td>
+              <div class="node-info">
+                <strong>{{ node.hostname }}</strong>
+              </div>
+            </td>
+            <td>
+              <code>{{ node.ip_address }}</code>
+            </td>
+            <td>
+              <nz-tag [nzColor]="getStatusColor(node.status)">
+                {{ getStatusText(node.status) }}
+              </nz-tag>
+            </td>
+            <td>
+              <div class="resource-info">
+                {{ node.cpu_cores || 0 }} 核心
+              </div>
+            </td>
+            <td>
+              <div class="resource-info">
+                {{ formatBytes(node.memory_total || 0) }}
+              </div>
+            </td>
+            <td>
+              <span class="time-info" title="{{formatTime(node.last_heartbeat || null)}}">
+                {{ getRelativeTime(node.last_heartbeat || null) }}
+              </span>
+            </td>
+            <td>
+              <div class="action-buttons">
+                <button nz-button nzType="link" nzSize="small" (click)="viewNodeDetail(node)" class="action-btn detail-btn">
+                  <span nz-icon nzType="eye"></span>
+                  详情
+                </button>
+                <button 
+                  nz-button 
+                  nzType="link" 
+                  nzSize="small" 
+                  nzDanger 
+                  class="action-btn delete-btn"
+                  nz-popconfirm
+                  nzPopconfirmTitle="确定要删除这个节点吗？"
+                  nzOkText="确定"
+                  nzCancelText="取消"
+                  (nzOnConfirm)="deleteNode(node)"
+                >
+                  <span nz-icon nzType="delete"></span>
+                  删除
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </nz-spin>
+  </nz-card>
+
+<!-- 节点详情弹窗 -->
+<nz-modal
+  [(nzVisible)]="isDetailModalVisible"
+  nzTitle="节点详情"
+  [nzWidth]="800"
+  (nzOnCancel)="handleDetailCancel()"
+  [nzFooter]="null"
+>
+  <div *nzModalContent>
+    <div *ngIf="selectedNode" class="node-detail-content">
+      <!-- 基本信息 -->
+      <nz-card nzTitle="基本信息" [nzBordered]="false" class="detail-section">
+        <div class="detail-grid">
+          <!-- 短信息 - 左右排列 -->
+          <div class="detail-row">
+            <div class="detail-item">
+              <label>节点名称:</label>
+              <span>{{ selectedNode.hostname }}</span>
+            </div>
+            <div class="detail-item">
+              <label>状态:</label>
+              <nz-tag [nzColor]="getStatusColor(selectedNode.status)">
+                {{ getStatusText(selectedNode.status) }}
+              </nz-tag>
+            </div>
+          </div>
+          
+          <div class="detail-row">
+            <div class="detail-item">
+              <label>IP地址:</label>
+              <span>{{ selectedNode.ip_address }}</span>
+            </div>
+          </div>
+          
+          <div class="detail-row">
+            <div class="detail-item">
+              <label>创建时间:</label>
+              <span>{{ selectedNode.created_at | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>更新时间:</label>
+              <span>{{ selectedNode.updated_at | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+            </div>
+          </div>
+          
+          <!-- 长信息 - 单独占一行 -->
+          <div class="detail-item-full">
+            <label>节点ID:</label>
+            <span class="long-text">{{ selectedNode.id }}</span>
+          </div>
+          
+          <div class="detail-item-full">
+            <label>最后心跳:</label>
+            <span class="long-text">{{ formatTime(selectedNode.last_heartbeat || null) }}</span>
+          </div>
+        </div>
+      </nz-card>
+
+      <!-- 资源信息 -->
+      <nz-card nzTitle="资源信息" [nzBordered]="false" class="detail-section">
+        <nz-row [nzGutter]="16">
+          <nz-col [nzSpan]="8">
+            <div class="resource-card">
+              <div class="resource-header">
+                <span nz-icon nzType="ci"></span>
+                <span>CPU核心数</span>
+              </div>
+              <div class="resource-content">
+                <div class="resource-value">
+                  {{ selectedNode.cpu_cores || 0 }} 核心
+                </div>
+              </div>
+            </div>
+          </nz-col>
+          
+          <nz-col [nzSpan]="8">
+            <div class="resource-card">
+              <div class="resource-header">
+                <span nz-icon nzType="database"></span>
+                <span>内存总量</span>
+              </div>
+              <div class="resource-content">
+                <div class="resource-value">
+                  {{ formatBytes(selectedNode.memory_total || 0) }}
+                </div>
+              </div>
+            </div>
+          </nz-col>
+          
+          <nz-col [nzSpan]="8">
+            <div class="resource-card">
+              <div class="resource-header">
+                <span nz-icon nzType="hdd"></span>
+                <span>磁盘总量</span>
+              </div>
+              <div class="resource-content">
+                <div class="resource-value">
+                  {{ formatBytes(selectedNode.disk_total || 0) }}
+                </div>
+              </div>
+            </div>
+          </nz-col>
+        </nz-row>
+      </nz-card>
+
+      <!-- 元数据信息 -->
+      <nz-card nzTitle="元数据信息" [nzBordered]="false" class="detail-section" *ngIf="selectedNode.metadata">
+        <pre class="meta-data">{{ selectedNode.metadata | json }}</pre>
+      </nz-card>
+    </div>
+  </div>
+</nz-modal>
+
+<!-- 创建节点模态框 -->
+<nz-modal
+  [(nzVisible)]="isCreateModalVisible"
+  nzTitle="新建节点"
+  [nzWidth]="500"
+  (nzOnCancel)="handleCreateCancel()"
+  (nzOnOk)="handleCreateOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">节点名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入节点名称" 
+            [(ngModel)]="createFormData.hostname"
+            name="hostname"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">IP地址</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入IP地址" 
+            [(ngModel)]="createFormData.ip_address"
+            name="ip_address"
+          />
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </div>
+</nz-modal>
+
+<ng-template #totalTemplate let-total>
+  共 {{ total }} 条记录
+</ng-template>
+</div>

@@ -1,0 +1,309 @@
+<div class="user-departments-container">
+  <nz-card nzTitle="用户部门关联管理" [nzExtra]="extraTemplate">
+    <ng-template #extraTemplate>
+      <button nz-button nzType="primary" (click)="showAssignModal()" style="margin-right: 8px;">
+        <i nz-icon nzType="user-add"></i>
+        分配用户
+      </button>
+      <button nz-button nzType="default" (click)="showBatchAssignModal()">
+        <i nz-icon nzType="team"></i>
+        批量分配
+      </button>
+    </ng-template>
+
+    <!-- 搜索条件 -->
+    <div class="search-container">
+      <nz-card nzTitle="搜索条件" nzSize="small">
+        <div class="search-form">
+          <div class="search-item">
+            <label>按用户搜索：</label>
+            <nz-select
+              [(ngModel)]="searchForm.user_id"
+              nzPlaceHolder="请选择用户"
+              nzAllowClear
+              nzShowSearch
+              style="width: 200px; margin-right: 12px;">
+              <nz-option
+                *ngFor="let user of users"
+                [nzValue]="user.id"
+                [nzLabel]="user.username">
+              </nz-option>
+            </nz-select>
+            <button nz-button nzType="primary" (click)="searchByUser()">
+              搜索用户部门
+            </button>
+          </div>
+
+          <nz-divider nzType="vertical"></nz-divider>
+
+          <div class="search-item">
+            <label>按部门搜索：</label>
+            <nz-select
+              [(ngModel)]="searchForm.department_id"
+              nzPlaceHolder="请选择部门"
+              nzAllowClear
+              nzShowSearch
+              style="width: 200px; margin-right: 12px;">
+              <nz-option
+                *ngFor="let dept of departments"
+                [nzValue]="dept.id"
+                [nzLabel]="dept.name">
+              </nz-option>
+            </nz-select>
+            <button nz-button nzType="primary" (click)="searchByDepartment()">
+              搜索部门用户
+            </button>
+          </div>
+
+          <nz-divider nzType="vertical"></nz-divider>
+
+          <button nz-button nzType="default" (click)="clearSearch()">
+            清空
+          </button>
+        </div>
+      </nz-card>
+    </div>
+
+    <!-- 关联列表 -->
+    <div class="table-container">
+      <nz-spin [nzSpinning]="loading">
+        <nz-table
+          #basicTable
+          [nzData]="userDepartments"
+          [nzLoading]="loading"
+          nzSize="middle"
+          [nzScroll]="{ x: '900px' }">
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>部门</th>
+              <th>职位</th>
+              <th>主要部门</th>
+              <th>分配时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let item of basicTable.data">
+              <td>
+                <span>{{ item.user?.username || getUserName(item.user_id) }}</span>
+                <br>
+                <small class="text-gray">{{ item.user?.email }}</small>
+              </td>
+              <td>{{ item.department?.name || getDepartmentName(item.department_id) }}</td>
+              <td>{{ item.position || '-' }}</td>
+              <td>
+                <nz-tag [nzColor]="item.is_primary ? 'green' : 'default'">
+                  {{ item.is_primary ? '主要部门' : '兼职部门' }}
+                </nz-tag>
+              </td>
+              <td>{{ item.created_at | date:'yyyy-MM-dd HH:mm' }}</td>
+              <td>
+                <button
+                  nz-button
+                  nzType="link"
+                  nzSize="small"
+                  (click)="showEditModal(item)">
+                  编辑
+                </button>
+                <nz-divider nzType="vertical"></nz-divider>
+                <button
+                  nz-button
+                  nzType="link"
+                  nzDanger
+                  nzSize="small"
+                  nz-popconfirm
+                  nzPopconfirmTitle="确定要移除这个关联吗？"
+                  (nzOnConfirm)="removeUserDepartment(item)">
+                  移除
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </nz-table>
+      </nz-spin>
+    </div>
+  </nz-card>
+
+  <!-- 分配用户模态框 -->
+  <nz-modal
+    [(nzVisible)]="isAssignModalVisible"
+    nzTitle="分配用户到部门"
+    (nzOnCancel)="handleAssignCancel()"
+    (nzOnOk)="handleAssignOk()"
+    nzWidth="500px">
+
+    <ng-container *nzModalContent>
+      <form nz-form nzLayout="vertical">
+        <nz-form-item>
+          <nz-form-label nzRequired>选择用户</nz-form-label>
+          <nz-form-control>
+            <nz-select
+              [(ngModel)]="assignForm.user_id"
+              name="user_id"
+              nzPlaceHolder="请选择用户"
+              nzShowSearch
+              style="width: 100%">
+              <nz-option
+                *ngFor="let user of users"
+                [nzValue]="user.id"
+                [nzLabel]="user.username + ' (' + user.email + ')'">
+              </nz-option>
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label nzRequired>选择部门</nz-form-label>
+          <nz-form-control>
+            <nz-select
+              [(ngModel)]="assignForm.department_id"
+              name="department_id"
+              nzPlaceHolder="请选择部门"
+              nzShowSearch
+              style="width: 100%">
+              <nz-option
+                *ngFor="let dept of departments"
+                [nzValue]="dept.id"
+                [nzLabel]="dept.name">
+              </nz-option>
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>职位</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              [(ngModel)]="assignForm.position"
+              name="position"
+              placeholder="请输入职位名称"
+              maxlength="100" />
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-control>
+            <nz-switch [(ngModel)]="assignForm.is_primary" name="is_primary"></nz-switch>
+            <span style="margin-left: 8px;">设为主要部门</span>
+          </nz-form-control>
+        </nz-form-item>
+      </form>
+    </ng-container>
+  </nz-modal>
+
+  <!-- 批量分配模态框 -->
+  <nz-modal
+    [(nzVisible)]="isBatchAssignModalVisible"
+    nzTitle="批量分配用户到部门"
+    (nzOnCancel)="handleBatchAssignCancel()"
+    (nzOnOk)="handleBatchAssignOk()"
+    nzWidth="500px">
+
+    <ng-container *nzModalContent>
+      <form nz-form nzLayout="vertical">
+        <nz-form-item>
+          <nz-form-label nzRequired>选择用户</nz-form-label>
+          <nz-form-control>
+            <nz-select
+              [(ngModel)]="batchAssignForm.user_ids"
+              name="user_ids"
+              nzMode="multiple"
+              nzPlaceHolder="请选择用户"
+              nzShowSearch
+              style="width: 100%">
+              <nz-option
+                *ngFor="let user of users"
+                [nzValue]="user.id"
+                [nzLabel]="user.username + ' (' + user.email + ')'">
+              </nz-option>
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label nzRequired>选择部门</nz-form-label>
+          <nz-form-control>
+            <nz-select
+              [(ngModel)]="batchAssignForm.department_id"
+              name="department_id"
+              nzPlaceHolder="请选择部门"
+              nzShowSearch
+              style="width: 100%">
+              <nz-option
+                *ngFor="let dept of departments"
+                [nzValue]="dept.id"
+                [nzLabel]="dept.name">
+              </nz-option>
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>职位</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              [(ngModel)]="batchAssignForm.position"
+              name="position"
+              placeholder="请输入职位名称"
+              maxlength="100" />
+          </nz-form-control>
+        </nz-form-item>
+      </form>
+    </ng-container>
+  </nz-modal>
+
+  <!-- 编辑关联模态框 -->
+  <nz-modal
+    [(nzVisible)]="isEditModalVisible"
+    nzTitle="编辑用户部门信息"
+    (nzOnCancel)="handleEditCancel()"
+    (nzOnOk)="handleEditOk()"
+    nzWidth="400px">
+
+    <ng-container *nzModalContent>
+      <form nz-form nzLayout="vertical" *ngIf="currentUserDepartment">
+        <nz-form-item>
+          <nz-form-label>用户</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              [value]="currentUserDepartment.user?.username || getUserName(currentUserDepartment.user_id)"
+              readonly />
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>部门</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              [value]="currentUserDepartment.department?.name || getDepartmentName(currentUserDepartment.department_id)"
+              readonly />
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-label>职位</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              [(ngModel)]="editForm.position"
+              name="position"
+              placeholder="请输入职位名称"
+              maxlength="100" />
+          </nz-form-control>
+        </nz-form-item>
+
+        <nz-form-item>
+          <nz-form-control>
+            <nz-switch [(ngModel)]="editForm.is_primary" name="is_primary"></nz-switch>
+            <span style="margin-left: 8px;">设为主要部门</span>
+          </nz-form-control>
+        </nz-form-item>
+      </form>
+    </ng-container>
+  </nz-modal>
+</div>

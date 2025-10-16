@@ -1,0 +1,82 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+# 内部依赖
+common = { path = "../common" }
+
+# Async runtime
+tokio.workspace = true
+tokio-util.workspace = true
+
+# Web framework
+axum = { workspace = true, features = ["ws"] }
+tower.workspace = true
+tower-http.workspace = true
+
+# WebSocket
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Configuration
+config.workspace = true
+dotenvy.workspace = true
+
+# Authentication
+jsonwebtoken.workspace = true
+bcrypt.workspace = true
+
+# Time
+chrono.workspace = true
+
+# UUID
+uuid.workspace = true
+
+# Random number generation
+rand = "0.8"
+
+# Redis (可选)
+redis = { workspace = true, optional = true }
+
+# Metrics
+prometheus.workspace = true
+
+# Validation
+validator.workspace = true
+
+# ORM
+sea-orm.workspace = true
+
+# Async utilities
+futures.workspace = true
+
+# Utilities
+once_cell.workspace = true
+
+[features]
+default = []
+redis = ["dep:redis"]
+

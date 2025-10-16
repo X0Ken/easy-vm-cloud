@@ -1,0 +1,89 @@
+<div class="settings-container">
+  <nz-card>
+    <div class="page-header">
+      <h2>系统设置</h2>
+      <p>管理系统配置和偏好设置</p>
+    </div>
+
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">系统名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入系统名称" 
+            [(ngModel)]="settings.siteName"
+            name="siteName"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">系统描述</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <textarea 
+            nz-input 
+            placeholder="请输入系统描述" 
+            [(ngModel)]="settings.siteDescription"
+            name="siteDescription"
+            [nzAutosize]="{ minRows: 3, maxRows: 5 }"
+          ></textarea>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">语言设置</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            [(ngModel)]="settings.language" 
+            name="language"
+            placeholder="请选择语言"
+          >
+            <nz-option 
+              *ngFor="let lang of languages" 
+              [nzValue]="lang.value" 
+              [nzLabel]="lang.label"
+            ></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">会话超时(分钟)</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            type="number"
+            placeholder="请输入会话超时时间" 
+            [(ngModel)]="settings.sessionTimeout"
+            name="sessionTimeout"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">启用通知</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-switch [(ngModel)]="settings.enableNotifications" name="enableNotifications"></nz-switch>
+          <span style="margin-left: 8px;">{{ settings.enableNotifications ? '开启' : '关闭' }}</span>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">启用审计日志</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-switch [(ngModel)]="settings.enableAuditLog" name="enableAuditLog"></nz-switch>
+          <span style="margin-left: 8px;">{{ settings.enableAuditLog ? '开启' : '关闭' }}</span>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-control [nzOffset]="6" [nzSpan]="18">
+          <button nz-button nzType="primary" (click)="saveSettings()">
+            保存设置
+          </button>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </nz-card>
+</div>

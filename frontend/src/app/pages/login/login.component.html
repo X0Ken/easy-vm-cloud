@@ -1,0 +1,64 @@
+<!-- 登录页面独立布局，不显示导航 -->
+<div class="login-page">
+  <div class="login-container">
+    <div class="login-card">
+      <nz-card>
+        <div class="login-header">
+          <div class="logo-section">
+            <img src="https://ng.ant.design/assets/img/logo.svg" alt="logo" class="logo">
+            <h1>管理系统</h1>
+          </div>
+          <h2>用户登录</h2>
+          <p>请输入您的用户名和密码</p>
+        </div>
+        
+        <form nz-form class="login-form">
+          <nz-form-item>
+            <nz-form-label [nzSpan]="0">用户名</nz-form-label>
+            <nz-form-control>
+              <nz-input-group nzPrefixIcon="user">
+                <input 
+                  nz-input 
+                  placeholder="请输入用户名" 
+                  [(ngModel)]="username"
+                  name="username"
+                  (keyup.enter)="onLogin()"
+                />
+              </nz-input-group>
+            </nz-form-control>
+          </nz-form-item>
+
+          <nz-form-item>
+            <nz-form-label [nzSpan]="0">密码</nz-form-label>
+            <nz-form-control>
+              <nz-input-group nzPrefixIcon="lock">
+                <input 
+                  nz-input 
+                  type="password" 
+                  placeholder="请输入密码" 
+                  [(ngModel)]="password"
+                  name="password"
+                  (keyup.enter)="onLogin()"
+                />
+              </nz-input-group>
+            </nz-form-control>
+          </nz-form-item>
+
+          <nz-form-item>
+            <nz-form-control>
+              <button 
+                nz-button 
+                nzType="primary" 
+                nzBlock 
+                [nzLoading]="loading"
+                (click)="onLogin()"
+              >
+                登录
+              </button>
+            </nz-form-control>
+          </nz-form-item>
+        </form>
+      </nz-card>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,143 @@
+<nz-layout class="app-layout">
+  <nz-sider class="menu-sidebar"
+    nzCollapsible
+    nzWidth="256px"
+    nzBreakpoint="md"
+    [(nzCollapsed)]="isCollapsed"
+    [nzTrigger]="null"
+  >
+    <div class="sidebar-logo">
+      <a routerLink="/welcome">
+        <img src="https://ng.ant.design/assets/img/logo.svg" alt="logo">
+        <h1>管理系统</h1>
+      </a>
+    </div>
+    <ul nz-menu nzTheme="dark" nzMode="inline" [nzInlineCollapsed]="isCollapsed">
+      <li nz-menu-item nzMatchRouter>
+        <a routerLink="/welcome">
+          <span nz-icon nzType="home"></span>
+          <span>首页</span>
+        </a>
+      </li>
+      <li nz-submenu [nzOpen]="personalCenterOpen" nzTitle="个人中心" nzIcon="user">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/me/profile">
+              <span nz-icon nzType="user"></span>
+              <span>个人信息</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li nz-submenu [nzOpen]="nodesManagementOpen" nzTitle="节点管理" nzIcon="cluster">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/nodes">
+              <span nz-icon nzType="cluster"></span>
+              <span>节点列表</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li nz-submenu [nzOpen]="vmManagementOpen" nzTitle="虚拟机管理" nzIcon="cloud-server">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/vms">
+              <span nz-icon nzType="cloud-server"></span>
+              <span>虚拟机管理</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li nz-submenu [nzOpen]="storageManagementOpen" nzTitle="存储管理" nzIcon="database">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/storage">
+              <span nz-icon nzType="database"></span>
+              <span>存储管理</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li nz-submenu [nzOpen]="networkManagementOpen" nzTitle="网络管理" nzIcon="global">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/network">
+              <span nz-icon nzType="global"></span>
+              <span>网络管理</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li nz-submenu [nzOpen]="permissionsManagementOpen" nzTitle="权限管理" nzIcon="safety-certificate">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/permissions/users">
+              <span nz-icon nzType="team"></span>
+              <span>用户管理</span>
+            </a>
+          </li>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/permissions/roles">
+              <span nz-icon nzType="safety"></span>
+              <span>角色管理</span>
+            </a>
+          </li>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/permissions/permissions">
+              <span nz-icon nzType="safety-certificate"></span>
+              <span>权限管理</span>
+            </a>
+          </li>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/permissions/departments">
+              <span nz-icon nzType="apartment"></span>
+              <span>部门管理</span>
+            </a>
+          </li>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/permissions/user-departments">
+              <span nz-icon nzType="usergroup-add"></span>
+              <span>用户部门关联</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li nz-submenu [nzOpen]="systemManagementOpen" nzTitle="系统管理" nzIcon="setting">
+        <ul>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/system/settings">
+              <span nz-icon nzType="setting"></span>
+              <span>系统设置</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </nz-sider>
+  <nz-layout>
+    <nz-header>
+      <div class="app-header">
+        <span class="header-trigger" (click)="isCollapsed = !isCollapsed">
+          <nz-icon class="trigger" [nzType]="isCollapsed ? 'menu-unfold' : 'menu-fold'" />
+        </span>
+        <div class="header-right">
+          <nz-tag [nzColor]="websocketConnected ? 'green' : 'red'" class="connection-status">
+            <span nz-icon [nzType]="websocketConnected ? 'check-circle' : 'close-circle'"></span>
+            WS
+          </nz-tag>
+          <span class="welcome-text">欢迎，{{ currentUser?.username || '用户' }}</span>
+          <button nz-button nzType="text" (click)="logout()">
+            <span nz-icon nzType="logout"></span>
+            退出
+          </button>
+        </div>
+      </div>
+    </nz-header>
+    <nz-content>
+      <div class="inner-content">
+        <router-outlet></router-outlet>
+      </div>
+    </nz-content>
+  </nz-layout>
+</nz-layout>

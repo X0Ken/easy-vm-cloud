@@ -1,0 +1,285 @@
+.network-container {
+  background: #f0f2f5;
+  min-height: 100vh;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  
+  .header-content {
+    h2 {
+      color: #1890ff;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    
+    p {
+      color: #666;
+      margin: 0;
+    }
+  }
+  
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+.node-info,
+.network-info,
+.subnet-info,
+.vm-info {
+  .node-id,
+  .network-id,
+  .subnet-id,
+  .vm-id {
+    color: #999;
+    font-size: 12px;
+  }
+}
+
+.cidr-info,
+.gateway-info,
+.ip-address {
+  font-family: monospace;
+  font-weight: 500;
+  color: #333;
+}
+
+.vlan-info {
+  font-weight: 500;
+  color: #1890ff;
+}
+
+.mtu-info {
+  font-weight: 500;
+  color: #333;
+}
+
+.time-info {
+  color: #666;
+  font-size: 12px;
+}
+
+.no-data {
+  color: #999;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.ip-pool-info {
+  .ip-range {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+  }
+}
+
+.usage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  
+  .usage-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #333;
+  }
+  
+  .usage-bar {
+    width: 60px;
+    height: 4px;
+    background: #f0f0f0;
+    border-radius: 2px;
+    overflow: hidden;
+    
+    .usage-fill {
+      height: 100%;
+      background: #52c41a;
+      transition: all 0.3s;
+      
+      &.high-usage {
+        background: #ff4d4f;
+      }
+    }
+  }
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.action-btn {
+  font-size: 12px;
+  padding: 2px 6px;
+  height: auto;
+  line-height: 1.2;
+  
+  &.edit-btn {
+    color: #1890ff;
+    
+    &:hover {
+      color: #40a9ff;
+    }
+  }
+  
+  &.delete-btn {
+    color: #ff4d4f;
+    
+    &:hover {
+      color: #ff7875;
+    }
+  }
+  
+  &.release-btn {
+    color: #fa8c16;
+    
+    &:hover {
+      color: #ffa940;
+    }
+  }
+  
+  &.reserve-btn {
+    color: #52c41a;
+    
+    &:hover {
+      color: #73d13d;
+    }
+  }
+}
+
+// 表格样式优化
+::ng-deep .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+::ng-deep .ant-table-tbody > tr:hover > td {
+  background: #f5f5f5;
+}
+
+// 标签页样式
+::ng-deep .ant-tabs-tab {
+  font-weight: 500;
+}
+
+::ng-deep .ant-tabs-tab-active {
+  color: #1890ff;
+}
+
+// 模态框样式
+::ng-deep .ant-modal-body {
+  padding: 24px;
+}
+
+// 只读信息样式
+.readonly-info {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 16px;
+  
+  .readonly-value {
+    color: #666;
+    font-weight: 500;
+    font-family: monospace;
+  }
+  
+  nz-form-item {
+    margin-bottom: 12px;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+  
+  nz-form-label {
+    color: #666;
+    font-weight: 500;
+  }
+}
+
+// 表单帮助文本样式
+.form-help-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 4px;
+  color: #52c41a;
+  font-size: 12px;
+  
+  nz-icon {
+    color: #52c41a;
+  }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .network-container {
+    padding: 16px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    
+    .header-content h2 {
+      font-size: 20px;
+    }
+    
+    .header-actions {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .action-btn {
+    margin-bottom: 4px;
+  }
+  
+  .usage-info {
+    .usage-bar {
+      width: 40px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .action-buttons {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .action-btn {
+    font-size: 11px;
+    padding: 1px 4px;
+  }
+  
+  .usage-info {
+    .usage-bar {
+      width: 30px;
+    }
+  }
+  
+  .cidr-info,
+  .gateway-info,
+  .ip-address {
+    font-size: 11px;
+  }
+}

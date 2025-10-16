@@ -1,0 +1,185 @@
+# 项目根目录 .gitignore
+# 合并前后端项目的忽略规则
+
+# =====================================
+# Rust 后端相关
+# =====================================
+
+# Rust 编译产物
+/target/
+/backend/target/
+/backend/Cargo.lock
+
+# 环境变量文件
+/backend/.env
+/backend/.env.local
+/backend/.env.production
+.env
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# =====================================
+# Angular 前端相关
+# =====================================
+
+# Angular 编译产物
+/frontend/dist/
+/frontend/tmp/
+/frontend/out-tsc/
+/frontend/bazel-out/
+
+# Node.js
+/frontend/node_modules/
+/frontend/npm-debug.log
+/frontend/yarn-error.log
+/frontend/package-lock.json
+/frontend/yarn.lock
+
+# Angular 缓存
+/frontend/.angular/cache/
+/frontend/.sass-cache/
+/frontend/connect.lock
+/frontend/coverage/
+/frontend/libpeerconnection.log
+/frontend/testem.log
+/frontend/typings/
+
+# =====================================
+# 开发工具和IDE
+# =====================================
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.vscode/.history/*
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Eclipse
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+
+# =====================================
+# 操作系统文件
+# =====================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# =====================================
+# Docker 相关
+# =====================================
+
+# Docker 运行时文件
+.dockerignore
+
+# =====================================
+# 日志文件
+# =====================================
+
+# 应用日志
+*.log
+logs/
+*.log.*
+
+# =====================================
+# 临时文件和备份
+# =====================================
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# 备份文件
+*.bak
+*.backup
+*.old
+
+# =====================================
+# 部署和构建相关
+# =====================================
+
+# 部署包
+*.tar.gz
+*.zip
+*.rar
+
+# 构建目录
+build/
+dist/
+
+# =====================================
+# 测试覆盖率
+# =====================================
+
+# 覆盖率报告
+coverage/
+*.lcov
+.nyc_output/
+
+# =====================================
+# 密钥和敏感信息
+# =====================================
+
+# 私钥
+*.key
+*.pem
+*.p12
+*.pfx
+
+# 证书
+*.crt
+*.cert
+
+# 配置文件中的敏感信息
+config/local.json
+config/production.json
+
+# =====================================
+# 缓存目录
+# =====================================
+
+.cache/
+.npm/
+.yarn/
+.api_token
+crates/common/src/proto/descriptor.bin

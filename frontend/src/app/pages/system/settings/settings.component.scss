@@ -1,0 +1,26 @@
+.settings-container {
+  background: #f0f2f5;
+  min-height: 100vh;
+}
+
+.page-header {
+  margin-bottom: 24px;
+  
+  h2 {
+    color: #1890ff;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  
+  p {
+    color: #666;
+    margin: 0;
+  }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 16px;
+  }
+}

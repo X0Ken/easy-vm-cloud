@@ -1,0 +1,32 @@
+.welcome-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.welcome-content {
+  text-align: center;
+  
+  h1 {
+    color: #1890ff;
+    margin-bottom: 16px;
+  }
+  
+  p {
+    color: #666;
+    margin-bottom: 24px;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    
+    button {
+      min-width: 120px;
+    }
+  }
+}
