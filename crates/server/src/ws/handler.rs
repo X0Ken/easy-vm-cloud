@@ -32,7 +32,7 @@ async fn handle_agent_connection(socket: WebSocket, manager: AgentConnectionMana
     let (tx, mut rx) = mpsc::unbounded_channel::<RpcMessage>();
 
     // 等待注册消息
-    let (node_id, hostname, ip_address) = match wait_for_registration(&mut ws_receiver).await {
+    let (node_id, hostname, ip_address) = match wait_for_registration(&mut ws_receiver, &state).await {
         Ok(info) => info,
         Err(e) => {
             error!("Agent 注册失败: {}", e);
@@ -118,6 +118,7 @@ async fn handle_agent_connection(socket: WebSocket, manager: AgentConnectionMana
 /// 等待并处理注册消息
 async fn wait_for_registration(
     receiver: &mut futures_util::stream::SplitStream<WebSocket>,
+    state: &crate::app_state::AppState,
 ) -> Result<(String, String, String), String> {
     // 等待第一条消息（应该是注册请求）
     match tokio::time::timeout(
@@ -141,6 +142,45 @@ async fn wait_for_registration(
             let payload = rpc_msg.payload.ok_or("缺少注册信息")?;
             let register_req: RegisterRequest = serde_json::from_value(payload)
                 .map_err(|e| format!("解析注册信息失败: {}", e))?;
+
+            // 检查并创建节点
+            let node_service = NodeService::new(state.clone());
+            
+            // 检查节点是否已存在
+            match node_service.node_exists(&register_req.node_id).await {
+                Ok(exists) => {
+                    if !exists {
+                        // 节点不存在，创建新节点
+                        let create_dto = crate::db::models::node::CreateNodeDto {
+                            hostname: register_req.hostname.clone(),
+                            ip_address: register_req.ip_address.clone(),
+                            hypervisor_type: None,
+                            hypervisor_version: None,
+                            metadata: None,
+                        };
+                        
+                        match node_service.create_node_with_id(
+                            register_req.node_id.clone(),
+                            create_dto,
+                        ).await {
+                            Ok(_) => {
+                                info!("成功创建新节点: node_id={}, hostname={}, ip={}", 
+                                      register_req.node_id, register_req.hostname, register_req.ip_address);
+                            }
+                            Err(e) => {
+                                error!("创建节点失败: node_id={}, error={}", register_req.node_id, e);
+                                return Err(format!("创建节点失败: {}", e));
+                            }
+                        }
+                    } else {
+                        info!("节点已存在，更新连接: node_id={}", register_req.node_id);
+                    }
+                }
+                Err(e) => {
+                    error!("检查节点存在性失败: node_id={}, error={}", register_req.node_id, e);
+                    return Err(format!("检查节点失败: {}", e));
+                }
+            }
 
             Ok((register_req.node_id, register_req.hostname, register_req.ip_address))
         }

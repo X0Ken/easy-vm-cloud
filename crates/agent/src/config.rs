@@ -16,7 +16,7 @@ impl Config {
     /// 从环境变量加载配置
     pub fn from_env() -> anyhow::Result<Self> {
         let node_id = std::env::var("NODE_ID")
-            .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+            .map_err(|_| anyhow::anyhow!("NODE_ID 环境变量必须设置，请配置节点ID"))?;
 
         let node_name = std::env::var("NODE_NAME")
             .unwrap_or_else(|_| hostname::get()

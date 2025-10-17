@@ -22,44 +22,80 @@ impl NodeService {
 
     /// 创建节点
     pub async fn create_node(&self, dto: CreateNodeDto) -> anyhow::Result<NodeResponse> {
-        let db = &self.state.sea_db();
-        
-        // 生成节点 ID
         let node_id = Uuid::new_v4().to_string();
+        self.create_node_with_id(node_id, dto).await
+    }
+
+    /// 使用指定的节点 ID 创建节点（用于 Agent 注册）
+    pub async fn create_node_with_id(&self, node_id: String, dto: CreateNodeDto) -> anyhow::Result<NodeResponse> {
+        let db = &self.state.sea_db();
         let now = Utc::now();
 
+        // 检查节点 ID 是否已存在
+        let existing_by_id = NodeEntity::find_by_id(node_id.clone())
+            .one(db)
+            .await?;
+
+        if existing_by_id.is_some() {
+            return Err(anyhow::anyhow!("节点 ID 已存在"));
+        }
+
         // 检查 IP 地址是否已存在
-        let existing = NodeEntity::find()
+        let existing_by_ip = NodeEntity::find()
             .filter(NodeColumn::IpAddress.eq(&dto.ip_address))
             .one(db)
             .await?;
 
-        if existing.is_some() {
+        if existing_by_ip.is_some() {
             return Err(anyhow::anyhow!("该 IP 地址已被使用"));
         }
 
+        // 创建节点记录
+        self.insert_node_record(&node_id, &dto, &now).await
+    }
+
+    /// 插入节点记录到数据库（内部方法）
+    async fn insert_node_record(
+        &self,
+        node_id: &str,
+        dto: &CreateNodeDto,
+        now: &chrono::DateTime<chrono::Utc>,
+    ) -> anyhow::Result<NodeResponse> {
+        let db = &self.state.sea_db();
+
         // 创建 ActiveModel
         let node_active = NodeActiveModel {
-            id: Set(node_id),
-            hostname: Set(dto.hostname),
-            ip_address: Set(dto.ip_address),
+            id: Set(node_id.to_string()),
+            hostname: Set(dto.hostname.clone()),
+            ip_address: Set(dto.ip_address.clone()),
             status: Set(NodeStatus::Offline.as_str().to_string()),
-            hypervisor_type: Set(dto.hypervisor_type),
-            hypervisor_version: Set(dto.hypervisor_version),
+            hypervisor_type: Set(dto.hypervisor_type.clone()),
+            hypervisor_version: Set(dto.hypervisor_version.clone()),
             cpu_cores: Set(None),
             cpu_threads: Set(None),
             memory_total: Set(None),
             disk_total: Set(None),
-            metadata: Set(dto.metadata),
+            metadata: Set(dto.metadata.clone()),
             last_heartbeat: Set(None),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
+            created_at: Set((*now).into()),
+            updated_at: Set((*now).into()),
         };
 
         // 插入数据库
         let node = node_active.insert(db).await?;
 
         Ok(NodeResponse::from(node))
+    }
+
+    /// 检查节点是否存在
+    pub async fn node_exists(&self, node_id: &str) -> anyhow::Result<bool> {
+        let db = &self.state.sea_db();
+        
+        let node = NodeEntity::find_by_id(node_id.to_string())
+            .one(db)
+            .await?;
+            
+        Ok(node.is_some())
     }
 
     /// 获取节点列表
