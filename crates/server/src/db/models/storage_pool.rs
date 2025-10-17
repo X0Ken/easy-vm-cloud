@@ -23,6 +23,9 @@ pub struct Model {
     pub allocated_gb: Option<i64>,
     pub available_gb: Option<i64>,
     
+    // 关联信息
+    pub node_id: Option<String>,
+    
     // 元数据
     pub metadata: Option<JsonValue>,
     
@@ -35,11 +38,24 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::volume::Entity")]
     Volumes,
+    
+    #[sea_orm(
+        belongs_to = "super::node::Entity",
+        from = "Column::NodeId",
+        to = "super::node::Column::Id"
+    )]
+    Node,
 }
 
 impl Related<super::volume::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Volumes.def()
+    }
+}
+
+impl Related<super::node::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Node.def()
     }
 }
 
@@ -71,6 +87,7 @@ pub struct CreateStoragePoolDto {
     pub pool_type: String,
     pub config: JsonValue,
     pub capacity_gb: Option<i64>,
+    pub node_id: Option<String>,
     pub metadata: Option<JsonValue>,
 }
 
@@ -83,6 +100,7 @@ pub struct UpdateStoragePoolDto {
     pub capacity_gb: Option<i64>,
     pub allocated_gb: Option<i64>,
     pub available_gb: Option<i64>,
+    pub node_id: Option<String>,
     pub metadata: Option<JsonValue>,
 }
 
@@ -97,6 +115,8 @@ pub struct StoragePoolResponse {
     pub capacity_gb: Option<i64>,
     pub allocated_gb: Option<i64>,
     pub available_gb: Option<i64>,
+    pub node_id: Option<String>,
+    pub node_name: Option<String>,
     pub metadata: Option<JsonValue>,
     pub created_at: String,
     pub updated_at: String,
@@ -113,6 +133,8 @@ impl From<Model> for StoragePoolResponse {
             capacity_gb: pool.capacity_gb,
             allocated_gb: pool.allocated_gb,
             available_gb: pool.available_gb,
+            node_id: pool.node_id,
+            node_name: None, // 需要单独查询节点名称
             metadata: pool.metadata,
             created_at: pool.created_at.to_rfc3339(),
             updated_at: pool.updated_at.to_rfc3339(),

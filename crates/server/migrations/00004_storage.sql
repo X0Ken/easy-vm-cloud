@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS storage_pools (
     allocated_gb BIGINT DEFAULT 0,
     available_gb BIGINT,
     
+    -- 关联信息
+    node_id VARCHAR(36) REFERENCES nodes(id) ON DELETE SET NULL,
+    
     -- 元数据
     metadata JSONB,
     
@@ -35,7 +38,6 @@ CREATE TABLE IF NOT EXISTS volumes (
     status VARCHAR(50) NOT NULL DEFAULT 'available',  -- available, in-use, creating, deleting, error
     
     -- 关联信息
-    node_id VARCHAR(36) REFERENCES nodes(id) ON DELETE SET NULL,
     vm_id VARCHAR(36) REFERENCES vms(id) ON DELETE SET NULL,
     
     -- 元数据
@@ -60,8 +62,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_storage_pools_type ON storage_pools(type);
 CREATE INDEX IF NOT EXISTS idx_storage_pools_status ON storage_pools(status);
+CREATE INDEX IF NOT EXISTS idx_storage_pools_node_id ON storage_pools(node_id);
 CREATE INDEX IF NOT EXISTS idx_volumes_pool_id ON volumes(pool_id);
-CREATE INDEX IF NOT EXISTS idx_volumes_node_id ON volumes(node_id);
 CREATE INDEX IF NOT EXISTS idx_volumes_vm_id ON volumes(vm_id);
 CREATE INDEX IF NOT EXISTS idx_volumes_type ON volumes(type);
 CREATE INDEX IF NOT EXISTS idx_volumes_status ON volumes(status);

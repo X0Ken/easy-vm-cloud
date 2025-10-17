@@ -19,7 +19,6 @@ pub struct Model {
     pub status: String,  // available, in-use, creating, deleting, error
     
     // 关联信息
-    pub node_id: Option<String>,
     pub vm_id: Option<String>,
     
     // 元数据
@@ -40,13 +39,6 @@ pub enum Relation {
     StoragePool,
     
     #[sea_orm(
-        belongs_to = "super::node::Entity",
-        from = "Column::NodeId",
-        to = "super::node::Column::Id"
-    )]
-    Node,
-    
-    #[sea_orm(
         belongs_to = "super::vm::Entity",
         from = "Column::VmId",
         to = "super::vm::Column::Id"
@@ -57,12 +49,6 @@ pub enum Relation {
 impl Related<super::storage_pool::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::StoragePool.def()
-    }
-}
-
-impl Related<super::node::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Node.def()
     }
 }
 
@@ -104,7 +90,6 @@ pub struct CreateVolumeDto {
     pub pool_id: String,
     pub size_gb: i64,
     pub volume_type: String,  // qcow2, raw
-    pub node_id: Option<String>,
     pub source: Option<String>,  // 外部URL，用于下载初始数据
     pub metadata: Option<JsonValue>,
 }
@@ -115,7 +100,6 @@ pub struct UpdateVolumeDto {
     pub name: Option<String>,
     pub status: Option<String>,
     pub path: Option<String>,
-    pub node_id: Option<String>,
     pub vm_id: Option<String>,
     pub metadata: Option<JsonValue>,
 }
@@ -137,7 +121,8 @@ pub struct VolumeResponse {
     pub pool_name: Option<String>,
     pub path: Option<String>,
     pub status: String,
-    pub node_id: Option<String>,
+    pub node_id: Option<String>,  // 从存储池获取
+    pub node_name: Option<String>,  // 从存储池获取
     pub vm_id: Option<String>,
     pub vm_name: Option<String>,
     pub metadata: Option<JsonValue>,
@@ -156,7 +141,8 @@ impl From<Model> for VolumeResponse {
             pool_name: None, // 将在服务层填充
             path: volume.path,
             status: volume.status,
-            node_id: volume.node_id,
+            node_id: None, // 需要从存储池获取
+            node_name: None, // 需要从存储池获取
             vm_id: volume.vm_id,
             vm_name: None, // 将在服务层填充
             metadata: volume.metadata,

@@ -13,8 +13,9 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
+import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { FormsModule } from '@angular/forms';
-import { StorageService, StoragePool, CreateStoragePoolRequest, UpdateStoragePoolRequest, PaginatedResponse } from '../../../services/storage.service';
+import { StorageService, StoragePool, CreateStoragePoolRequest, UpdateStoragePoolRequest, PaginatedResponse, Node } from '../../../services/storage.service';
 
 @Component({
   selector: 'app-storage-pools',
@@ -33,6 +34,7 @@ import { StorageService, StoragePool, CreateStoragePoolRequest, UpdateStoragePoo
     NzSelectModule,
     NzInputNumberModule,
     NzPopconfirmModule,
+    NzTabsModule,
     FormsModule
   ],
   templateUrl: './storage-pools.component.html',
@@ -40,9 +42,11 @@ import { StorageService, StoragePool, CreateStoragePoolRequest, UpdateStoragePoo
 })
 export class StoragePoolsComponent implements OnInit {
   storagePools: StoragePool[] = [];
+  nodes: Node[] = [];
   loading = false;
   isModalVisible = false;
   isEditMode = false;
+  isConfigExampleVisible = false;
   currentPool: StoragePool | null = null;
   
   // 分页状态
@@ -60,7 +64,9 @@ export class StoragePoolsComponent implements OnInit {
     name: '',
     pool_type: 'nfs' as 'lvm' | 'nfs' | 'ceph' | 'iscsi', // 默认选择NFS
     capacity_gb: 100,
-    config: {} as any
+    node_id: '',
+    config: {} as any,
+    configJson: '' // 用于界面输入的JSON字符串
   };
 
   constructor(
@@ -70,6 +76,7 @@ export class StoragePoolsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadStoragePools();
+    this.loadNodes();
   }
 
   loadStoragePools(page: number = 1): void {
@@ -92,6 +99,18 @@ export class StoragePoolsComponent implements OnInit {
         console.error('获取存储池列表失败:', error);
         this.message.error('获取存储池列表失败');
         this.loading = false;
+      }
+    });
+  }
+
+  loadNodes(): void {
+    this.storageService.getNodes().subscribe({
+      next: (nodes: Node[]) => {
+        this.nodes = nodes;
+      },
+      error: (error) => {
+        console.error('获取节点列表失败:', error);
+        this.message.error('获取节点列表失败');
       }
     });
   }
@@ -167,7 +186,9 @@ export class StoragePoolsComponent implements OnInit {
       name: pool.name,
       pool_type: pool.type,
       capacity_gb: pool.total_size_gb,
-      config: pool.config || {}
+      node_id: pool.node_id || '',
+      config: pool.config || {},
+      configJson: pool.config ? JSON.stringify(pool.config, null, 2) : ''
     };
     this.isModalVisible = true;
   }
@@ -186,11 +207,23 @@ export class StoragePoolsComponent implements OnInit {
   }
 
   createPool(): void {
+    // 解析配置JSON
+    let config = {};
+    if (this.poolFormData.configJson.trim()) {
+      try {
+        config = JSON.parse(this.poolFormData.configJson);
+      } catch (error) {
+        this.message.error('配置JSON格式错误，请检查输入');
+        return;
+      }
+    }
+
     const createData: CreateStoragePoolRequest = {
       name: this.poolFormData.name,
       pool_type: this.poolFormData.pool_type,
       capacity_gb: this.poolFormData.capacity_gb,
-      config: this.poolFormData.config
+      node_id: this.poolFormData.node_id || undefined,
+      config: config
     };
 
     this.storageService.createStoragePool(createData).subscribe({
@@ -210,9 +243,22 @@ export class StoragePoolsComponent implements OnInit {
   updatePool(): void {
     if (!this.currentPool) return;
     
+    // 解析配置JSON
+    let config = this.currentPool.config;
+    if (this.poolFormData.configJson.trim()) {
+      try {
+        config = JSON.parse(this.poolFormData.configJson);
+      } catch (error) {
+        this.message.error('配置JSON格式错误，请检查输入');
+        return;
+      }
+    }
+    
     const updateData: UpdateStoragePoolRequest = {
       name: this.poolFormData.name,
-      total_size_gb: this.poolFormData.capacity_gb
+      total_size_gb: this.poolFormData.capacity_gb,
+      node_id: this.poolFormData.node_id || undefined,
+      config: config
     };
 
     this.storageService.updateStoragePool(this.currentPool.id, updateData).subscribe({
@@ -256,7 +302,9 @@ export class StoragePoolsComponent implements OnInit {
       name: '',
       pool_type: 'nfs', // 默认选择NFS
       capacity_gb: 100,
-      config: {}
+      node_id: '',
+      config: {},
+      configJson: ''
     };
   }
 
@@ -269,5 +317,13 @@ export class StoragePoolsComponent implements OnInit {
 
   calculateUsagePercentage(used: number, total: number): number {
     return total > 0 ? Math.round((used / total) * 100) : 0;
+  }
+
+  showConfigExamples(): void {
+    this.isConfigExampleVisible = true;
+  }
+
+  handleConfigExampleCancel(): void {
+    this.isConfigExampleVisible = false;
   }
 }

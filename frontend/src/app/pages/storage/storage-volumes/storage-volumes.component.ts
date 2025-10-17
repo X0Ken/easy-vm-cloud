@@ -72,7 +72,6 @@ export class StorageVolumesComponent implements OnInit {
     pool_id: null as number | null,
     size_gb: 20,
     volume_type: 'qcow2' as 'qcow2' | 'raw',
-    node_id: null as string | null,
     dataSource: 'blank' as 'blank' | 'url',  // 数据源选择
     source: null as string | null  // 外部URL
   };
@@ -198,7 +197,6 @@ export class StorageVolumesComponent implements OnInit {
       pool_id: volume.pool_id,
       size_gb: volume.size_gb,
       volume_type: volume.volume_type || 'qcow2',
-      node_id: volume.node_id || null,
       dataSource: 'blank' as 'blank' | 'url',  // 编辑时默认为空白
       source: null as string | null  // 编辑时不支持外部URL
     };
@@ -231,7 +229,6 @@ export class StorageVolumesComponent implements OnInit {
       pool_id: this.volumeFormData.pool_id!,
       size_gb: this.volumeFormData.size_gb,
       volume_type: this.volumeFormData.volume_type,
-      node_id: this.volumeFormData.node_id,
       source: this.volumeFormData.dataSource === 'url' ? this.volumeFormData.source : null
     };
 
@@ -290,7 +287,6 @@ export class StorageVolumesComponent implements OnInit {
       pool_id: null,
       size_gb: 20,
       volume_type: 'qcow2',
-      node_id: null,
       dataSource: 'blank',
       source: null
     };

@@ -46,6 +46,7 @@ impl StorageService {
             capacity_gb: Set(dto.capacity_gb),
             allocated_gb: Set(Some(0)),
             available_gb: Set(dto.capacity_gb),
+            node_id: Set(dto.node_id),
             metadata: Set(dto.metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -84,7 +85,23 @@ impl StorageService {
             .all(db)
             .await?;
 
-        let pool_responses: Vec<StoragePoolResponse> = pools.into_iter().map(StoragePoolResponse::from).collect();
+        // 获取所有相关的节点信息
+        let mut pool_responses = Vec::new();
+        
+        for pool in pools {
+            let mut pool_response = StoragePoolResponse::from(pool.clone());
+            
+            // 获取节点名称
+            if let Some(node_id) = &pool.node_id {
+                if let Ok(node) = crate::db::models::node::Entity::find_by_id(node_id).one(db).await {
+                    if let Some(node) = node {
+                        pool_response.node_name = Some(node.hostname);
+                    }
+                }
+            }
+            
+            pool_responses.push(pool_response);
+        }
 
         Ok(StoragePoolListResponse {
             pools: pool_responses,
@@ -134,6 +151,9 @@ impl StorageService {
         }
         if let Some(available_gb) = dto.available_gb {
             pool_active.available_gb = Set(Some(available_gb));
+        }
+        if let Some(node_id) = dto.node_id {
+            pool_active.node_id = Set(Some(node_id));
         }
         if let Some(metadata) = dto.metadata {
             pool_active.metadata = Set(Some(metadata));
@@ -195,7 +215,6 @@ impl StorageService {
             pool_id: Set(dto.pool_id.clone()),
             path: Set(None),
             status: Set(VolumeStatus::Creating.as_str().to_string()),
-            node_id: Set(dto.node_id.clone()),
             vm_id: Set(None),
             metadata: Set(Some(metadata)),
             created_at: Set(now.into()),
@@ -205,7 +224,7 @@ impl StorageService {
         let mut volume = volume_active.insert(db).await?;
 
         // 调用 Agent 创建实际的存储卷
-        if let Some(node_id) = &dto.node_id {
+        if let Some(node_id) = &pool.node_id {
             let request = CreateVolumeRequest {
                 volume_id: volume_id.clone(),
                 name: dto.name.clone(),
@@ -217,8 +236,6 @@ impl StorageService {
             };
             
             // 使用 WebSocket RPC 调用 Agent 创建存储卷
-            let node_id = volume.node_id.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("存储卷未关联节点"))?;
             
             let response_msg = self.state.agent_manager()
                 .call(
@@ -268,8 +285,28 @@ impl StorageService {
             query = query.filter(VolumeColumn::PoolId.eq(pid));
         }
 
+        // 如果指定了节点ID，通过存储池来过滤
         if let Some(nid) = node_id {
-            query = query.filter(VolumeColumn::NodeId.eq(nid));
+            // 先找到该节点下的所有存储池
+            let pool_ids: Vec<String> = StoragePoolEntity::find()
+                .filter(StoragePoolColumn::NodeId.eq(nid))
+                .select_only()
+                .column(StoragePoolColumn::Id)
+                .into_tuple()
+                .all(db)
+                .await?;
+            
+            if !pool_ids.is_empty() {
+                query = query.filter(VolumeColumn::PoolId.is_in(pool_ids));
+            } else {
+                // 如果该节点下没有存储池，返回空结果
+                return Ok(VolumeListResponse {
+                    volumes: vec![],
+                    total: 0,
+                    page,
+                    page_size,
+                });
+            }
         }
 
         if let Some(s) = status {
@@ -291,10 +328,19 @@ impl StorageService {
         for volume in volumes {
             let mut volume_response = VolumeResponse::from(volume.clone());
             
-            // 获取存储池名称
+            // 获取存储池信息（包括名称和节点信息）
             if let Ok(pool) = StoragePoolEntity::find_by_id(&volume.pool_id).one(db).await {
                 if let Some(pool) = pool {
-                    volume_response.pool_name = Some(pool.name);
+                    volume_response.pool_name = Some(pool.name.clone());
+                    volume_response.node_id = pool.node_id.clone();
+                    // 获取节点名称
+                    if let Some(node_id) = &pool.node_id {
+                        if let Ok(node) = crate::db::models::node::Entity::find_by_id(node_id).one(db).await {
+                            if let Some(node) = node {
+                                volume_response.node_name = Some(node.hostname);
+                            }
+                        }
+                    }
                 }
             }
             
@@ -350,9 +396,6 @@ impl StorageService {
         if let Some(path) = dto.path {
             volume_active.path = Set(Some(path));
         }
-        if let Some(node_id) = dto.node_id {
-            volume_active.node_id = Set(Some(node_id));
-        }
         if let Some(vm_id) = dto.vm_id {
             volume_active.vm_id = Set(Some(vm_id));
         }
@@ -374,16 +417,20 @@ impl StorageService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("存储卷不存在"))?;
 
+        // 获取存储池信息以获取节点ID
+        let pool = StoragePoolEntity::find_by_id(&volume.pool_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("存储池不存在"))?;
+
         // 调用 Agent 调整存储卷大小
-        if let Some(node_id) = &volume.node_id {
+        if let Some(node_id) = &pool.node_id {
             let request = ResizeVolumeRequest {
                 volume_id: volume_id.to_string(),
                 new_size_gb: dto.new_size_gb as u64,
                 pool_id: volume.pool_id.clone(),
             };
             // 使用 WebSocket RPC 调用 Agent 调整存储卷大小
-            let node_id = volume.node_id.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("存储卷未关联节点"))?;
             
             let response_msg = self.state.agent_manager()
                 .call(
@@ -427,16 +474,20 @@ impl StorageService {
             return Err(anyhow::anyhow!("存储卷正在被虚拟机使用，无法删除"));
         }
 
+        // 获取存储池信息以获取节点ID
+        let pool = StoragePoolEntity::find_by_id(&volume.pool_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("存储池不存在"))?;
+
         // 调用 Agent 删除实际的存储卷
-        if let Some(node_id) = &volume.node_id {
+        if let Some(node_id) = &pool.node_id {
             let request = DeleteVolumeRequest {
                 volume_id: volume_id.to_string(),
                 pool_id: volume.pool_id.clone(),
             };
             
             // 使用 WebSocket RPC 调用 Agent 删除存储卷
-            let node_id = volume.node_id.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("存储卷未关联节点"))?;
             
             let response_msg = self.state.agent_manager()
                 .call(
@@ -474,8 +525,14 @@ impl StorageService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("存储卷不存在"))?;
 
+        // 获取存储池信息以获取节点ID
+        let pool = StoragePoolEntity::find_by_id(&volume.pool_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("存储池不存在"))?;
+
         // 调用 Agent 创建快照
-        if let Some(node_id) = &volume.node_id {
+        if let Some(node_id) = &pool.node_id {
             let request = SnapshotVolumeRequest {
                 volume_id: volume_id.to_string(),
                 snapshot_name: snapshot_name.clone(),
@@ -483,8 +540,6 @@ impl StorageService {
             };
             
             // 使用 WebSocket RPC 调用 Agent 创建快照
-            let node_id = volume.node_id.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("存储卷未关联节点"))?;
             
             let response_msg = self.state.agent_manager()
                 .call(

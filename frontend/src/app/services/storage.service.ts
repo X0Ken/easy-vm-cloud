@@ -13,8 +13,8 @@ export interface StoragePool {
   total_size_gb: number;
   used_size_gb: number;
   available_size_gb: number;
-  node_id: string;
-  node_name: string;
+  node_id?: string;
+  node_name?: string;
   config?: any;  // 存储池配置
   metadata?: any;  // 元数据
   created_at: string;
@@ -30,8 +30,8 @@ export interface StorageVolume {
   size_gb: number;
   volume_type: 'qcow2' | 'raw';
   status: 'available' | 'in_use' | 'creating' | 'deleting' | 'error';
-  node_id?: string | null;
-  node_name?: string;
+  node_id?: string;  // 从存储池获取
+  node_name?: string;  // 从存储池获取
   vm_id?: number;
   vm_name?: string;
   metadata?: any;  // 包含source等元数据信息
@@ -44,6 +44,7 @@ export interface CreateStoragePoolRequest {
   name: string;
   pool_type: 'lvm' | 'nfs' | 'ceph' | 'iscsi';
   capacity_gb?: number;
+  node_id?: string;
   config: {
     // LVM 配置
     volume_group?: string;
@@ -64,6 +65,7 @@ export interface CreateStoragePoolRequest {
 export interface UpdateStoragePoolRequest {
   name?: string;
   total_size_gb?: number;
+  node_id?: string;
   config?: any;
 }
 
@@ -73,7 +75,6 @@ export interface CreateStorageVolumeRequest {
   pool_id: number;
   size_gb: number;
   volume_type: 'qcow2' | 'raw';
-  node_id?: string | null;
   source?: string | null;  // 外部URL，用于下载初始数据
 }
 
@@ -123,8 +124,10 @@ export class StorageService {
       total_size_gb: pool.capacity_gb,
       used_size_gb: pool.allocated_gb,
       available_size_gb: pool.available_gb,
-      node_id: pool.node_id || '1', // 使用API返回的node_id，默认为字符串'1'
-      node_name: 'Unknown', // 默认值
+      node_id: pool.node_id,
+      node_name: pool.node_name,
+      config: pool.config,
+      metadata: pool.metadata,
       created_at: pool.created_at,
       updated_at: pool.updated_at
     }));
@@ -152,8 +155,8 @@ export class StorageService {
       size_gb: volume.size_gb || volume.capacity_gb || 0,
       volume_type: volume.volume_type || 'qcow2',
       status: volume.status || 'available',
-      node_id: volume.node_id,
-      node_name: volume.node_name,
+      node_id: volume.node_id,  // 从存储池获取
+      node_name: volume.node_name,  // 从存储池获取
       vm_id: volume.vm_id,
       vm_name: volume.vm_name,
       metadata: volume.metadata,

@@ -37,6 +37,7 @@
             <th>名称</th>
             <th>类型</th>
             <th>状态</th>
+            <th>节点</th>
             <th>总容量</th>
             <th>已使用</th>
             <th>可用空间</th>
@@ -60,6 +61,9 @@
               <nz-tag [nzColor]="getStatusColor(pool.status)">
                 {{ getStatusText(pool.status) }}
               </nz-tag>
+            </td>
+            <td>
+              <span class="node-info">{{ pool.node_name || '未分配' }}</span>
             </td>
             <td>
               <span class="size-info">{{ formatSize(pool.total_size_gb) }}</span>
@@ -154,6 +158,24 @@
       </nz-form-item>
 
       <nz-form-item>
+        <nz-form-label [nzSpan]="6">关联节点</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            nzPlaceHolder="请选择节点" 
+            [(ngModel)]="poolFormData.node_id"
+            name="node_id"
+            nzAllowClear
+          >
+            <nz-option 
+              *ngFor="let node of nodes" 
+              [nzValue]="node.id.toString()" 
+              [nzLabel]="node.hostname + ' (' + node.ip + ')'"
+            ></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
         <nz-form-label [nzSpan]="6">总容量 (GB)</nz-form-label>
         <nz-form-control [nzSpan]="18">
           <nz-input-number 
@@ -167,7 +189,131 @@
           ></nz-input-number>
         </nz-form-control>
       </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">存储配置</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <div class="config-input-wrapper">
+            <textarea 
+              nz-input 
+              placeholder="请输入存储配置JSON，例如：{&quot;server&quot;:&quot;192.168.1.10&quot;,&quot;path&quot;:&quot;/data/nfs&quot;,&quot;mount_path&quot;:&quot;/data/nfs&quot;}"
+              [(ngModel)]="poolFormData.configJson"
+              name="configJson"
+              rows="4"
+              style="width: 100%"
+            ></textarea>
+            <button 
+              nz-button 
+              nzType="link" 
+              nzSize="small" 
+              class="config-example-btn"
+              (click)="showConfigExamples()"
+            >
+              <span nz-icon nzType="question-circle"></span>
+              查看配置示例
+            </button>
+          </div>
+        </nz-form-control>
+      </nz-form-item>
     </form>
+  </div>
+</nz-modal>
+
+<!-- 配置示例弹窗 -->
+<nz-modal
+  [(nzVisible)]="isConfigExampleVisible"
+  nzTitle="存储配置示例"
+  [nzWidth]="700"
+  (nzOnCancel)="handleConfigExampleCancel()"
+  [nzFooter]="null"
+>
+  <div *nzModalContent>
+    <div class="config-examples">
+      <nz-tabs nzType="card">
+        <nz-tab nzTitle="NFS">
+          <div class="config-example">
+            <h4>NFS 存储配置</h4>
+            <p>适用于网络文件系统存储</p>
+            <pre><code>{{ '{' }}
+  "server": "192.168.1.10",
+  "path": "/data/nfs",
+  "mount_path": "/data/nfs"
+{{ '}' }}</code></pre>
+            <div class="config-description">
+              <strong>字段说明：</strong>
+              <ul>
+                <li><code>server</code>: NFS服务器IP地址</li>
+                <li><code>path</code>: NFS服务器上的导出路径</li>
+                <li><code>mount_path</code>: 本地挂载路径</li>
+              </ul>
+            </div>
+          </div>
+        </nz-tab>
+        
+        <nz-tab nzTitle="LVM">
+          <div class="config-example">
+            <h4>LVM 存储配置</h4>
+            <p>适用于逻辑卷管理存储</p>
+            <pre><code>{{ '{' }}
+  "volume_group": "vg_vm"
+{{ '}' }}</code></pre>
+            <div class="config-description">
+              <strong>字段说明：</strong>
+              <ul>
+                <li><code>volume_group</code>: LVM卷组名称</li>
+              </ul>
+            </div>
+          </div>
+        </nz-tab>
+        
+        <nz-tab nzTitle="Ceph">
+          <div class="config-example">
+            <h4>Ceph 存储配置</h4>
+            <p>适用于分布式存储系统</p>
+            <pre><code>{{ '{' }}
+  "monitors": ["192.168.1.10:6789", "192.168.1.11:6789"],
+  "pool": "vms",
+  "user": "admin",
+  "keyring": "/etc/ceph/ceph.client.admin.keyring"
+{{ '}' }}</code></pre>
+            <div class="config-description">
+              <strong>字段说明：</strong>
+              <ul>
+                <li><code>monitors</code>: Ceph Monitor节点地址列表</li>
+                <li><code>pool</code>: Ceph存储池名称</li>
+                <li><code>user</code>: Ceph用户名称</li>
+                <li><code>keyring</code>: 密钥环文件路径（可选）</li>
+              </ul>
+            </div>
+          </div>
+        </nz-tab>
+        
+        <nz-tab nzTitle="iSCSI">
+          <div class="config-example">
+            <h4>iSCSI 存储配置</h4>
+            <p>适用于网络块存储</p>
+            <pre><code>{{ '{' }}
+  "target": "iqn.2023-01.com.example:storage.vm",
+  "portal": "192.168.1.10:3260",
+  "lun": 0,
+  "auth": {{ '{' }}
+    "username": "user",
+    "password": "password"
+  {{ '}' }}
+{{ '}' }}</code></pre>
+            <div class="config-description">
+              <strong>字段说明：</strong>
+              <ul>
+                <li><code>target</code>: iSCSI目标名称</li>
+                <li><code>portal</code>: iSCSI门户地址</li>
+                <li><code>lun</code>: 逻辑单元号</li>
+                <li><code>auth</code>: 认证信息（可选）</li>
+              </ul>
+            </div>
+          </div>
+        </nz-tab>
+      </nz-tabs>
+    </div>
   </div>
 </nz-modal>
 
