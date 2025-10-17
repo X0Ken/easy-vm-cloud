@@ -183,3 +183,6 @@ config/production.json
 .yarn/
 .api_token
 crates/common/src/proto/descriptor.bin
+.cursor.json
+.cursorignore
+.cursorrules
