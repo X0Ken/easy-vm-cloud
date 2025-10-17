@@ -144,13 +144,13 @@
 
 ## 5 API 设计（示例）
 
-- `POST /api/v1/auth/login` — 登录
-- `GET /api/v1/nodes` — 列表节点
-- `GET /api/v1/nodes/{id}` — 节点详情
-- `POST /api/v1/vms` — 创建 VM
-- `POST /api/v1/vms/{id}/start` — 启动 VM
-- `POST /api/v1/vms/{id}/migrate` — 迁移 VM（payload 包含目标 node_id）
-- `GET /api/v1/tasks/{id}` — 查询任务状态
+- `POST /api/auth/login` — 登录
+- `GET /api/nodes` — 列表节点
+- `GET /api/nodes/{id}` — 节点详情
+- `POST /api/vms` — 创建 VM
+- `POST /api/vms/{id}/start` — 启动 VM
+- `POST /api/vms/{id}/migrate` — 迁移 VM（payload 包含目标 node_id）
+- `GET /api/tasks/{id}` — 查询任务状态
 
 **迁移流程（冷迁/热迁）示意**：
 1. 前端发起迁移请求 -> 后端校验权限 & 资源
