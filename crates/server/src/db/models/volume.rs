@@ -105,6 +105,7 @@ pub struct CreateVolumeDto {
     pub size_gb: i64,
     pub volume_type: String,  // qcow2, raw
     pub node_id: Option<String>,
+    pub source: Option<String>,  // 外部URL，用于下载初始数据
     pub metadata: Option<JsonValue>,
 }
 

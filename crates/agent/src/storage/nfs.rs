@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::process::Command;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::driver::{StorageDriver, StoragePoolConfig, VolumeInfo};
 
@@ -48,6 +48,39 @@ impl NfsDriver {
             .and_then(|s| s.to_str())
             .unwrap_or("raw")
             .to_string()
+    }
+
+    /// 检测文件的实际格式
+    async fn detect_file_format(&self, file_path: &Path) -> Result<String> {
+        // 使用 qemu-img info 命令检测文件格式
+        let output = Command::new("qemu-img")
+            .arg("info")
+            .arg(file_path)
+            .output()
+            .await
+            .map_err(|e| Error::Storage(format!("Failed to run qemu-img info: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!("qemu-img info failed: {}", stderr);
+            return Err(Error::Storage(format!("Failed to detect file format: {}", stderr)));
+        }
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        
+        // 解析 qemu-img info 输出，查找 "file format:" 行
+        for line in output_str.lines() {
+            if line.trim().starts_with("file format:") {
+                let format = line.split(':').nth(1)
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "raw".to_string());
+                return Ok(format);
+            }
+        }
+
+        // 如果无法检测到格式，默认为 raw
+        warn!("Could not detect file format for {:?}, defaulting to raw", file_path);
+        Ok("raw".to_string())
     }
 
     /// 从路径中提取卷 ID
@@ -90,38 +123,16 @@ impl NfsDriver {
 
         Ok(virtual_size / (1024 * 1024 * 1024))
     }
-}
 
-#[async_trait]
-impl StorageDriver for NfsDriver {
-    async fn create_volume(
+    /// 创建空白存储卷（内部方法）
+    async fn create_blank_volume(
         &self,
         volume_id: &str,
         name: &str,
         size_gb: u64,
         format: &str,
+        volume_path: &std::path::Path,
     ) -> Result<VolumeInfo> {
-        info!(
-            "Creating NFS volume: id={}, name={}, size={}GB, format={}",
-            volume_id, name, size_gb, format
-        );
-
-        let volume_path = self.get_volume_path(volume_id, format);
-
-        // 检查文件是否已存在
-        if volume_path.exists() {
-            return Err(Error::AlreadyExists(format!(
-                "Volume {} already exists",
-                volume_id
-            )));
-        }
-
-        // 确保目录存在
-        if let Some(parent) = volume_path.parent() {
-            fs::create_dir_all(parent).await
-                .map_err(|e| Error::Storage(format!("Failed to create directory: {}", e)))?;
-        }
-
         // 根据格式创建磁盘镜像
         match format {
             "qcow2" => {
@@ -130,7 +141,7 @@ impl StorageDriver for NfsDriver {
                     .arg("create")
                     .arg("-f")
                     .arg("qcow2")
-                    .arg(&volume_path)
+                    .arg(volume_path)
                     .arg(format!("{}G", size_gb))
                     .output()
                     .await
@@ -148,7 +159,7 @@ impl StorageDriver for NfsDriver {
                     .arg("create")
                     .arg("-f")
                     .arg("raw")
-                    .arg(&volume_path)
+                    .arg(volume_path)
                     .arg(format!("{}G", size_gb))
                     .output()
                     .await
@@ -171,7 +182,7 @@ impl StorageDriver for NfsDriver {
         info!("Successfully created volume {} at {:?}", volume_id, volume_path);
 
         // 获取实际大小
-        let actual_size_gb = self.get_file_actual_size(&volume_path).await?;
+        let actual_size_gb = self.get_file_actual_size(volume_path).await?;
 
         Ok(VolumeInfo {
             volume_id: volume_id.to_string(),
@@ -183,6 +194,192 @@ impl StorageDriver for NfsDriver {
             status: "available".to_string(),
         })
     }
+
+    /// 从外部URL创建存储卷（内部方法）
+    async fn create_volume_from_url_internal(
+        &self,
+        volume_id: &str,
+        name: &str,
+        size_gb: u64,
+        format: &str,
+        source_url: &str,
+        volume_path: &std::path::Path,
+    ) -> Result<VolumeInfo> {
+        info!(
+            "Creating NFS volume from URL: id={}, name={}, size={}GB, format={}, url={}",
+            volume_id, name, size_gb, format, source_url
+        );
+
+        // 下载外部URL的内容到临时文件
+        let temp_path = volume_path.with_extension("tmp");
+        
+        // 使用curl下载文件
+        let output = Command::new("curl")
+            .arg("-L")  // 跟随重定向
+            .arg("-o")
+            .arg(&temp_path)
+            .arg(source_url)
+            .output()
+            .await
+            .map_err(|e| Error::Storage(format!("Failed to download from URL: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!("curl download failed: {}", stderr);
+            return Err(Error::Storage(format!("Failed to download from URL: {}", stderr)));
+        }
+
+        // 检测下载文件的格式
+        let detected_format = self.detect_file_format(&temp_path).await?;
+        info!("Detected downloaded file format: {}", detected_format);
+
+        // 根据目标格式转换下载的文件
+        match format {
+            "qcow2" => {
+                // 如果检测到的格式已经是qcow2，直接重命名
+                if detected_format == "qcow2" {
+                    fs::rename(&temp_path, volume_path).await
+                        .map_err(|e| Error::Storage(format!("Failed to rename qcow2 file: {}", e)))?;
+                } else {
+                    // 使用 qemu-img 转换到 qcow2 格式
+                    let output = Command::new("qemu-img")
+                        .arg("convert")
+                        .arg("-f")
+                        .arg(&detected_format)
+                        .arg("-O")
+                        .arg("qcow2")
+                        .arg("-o")
+                        .arg("preallocation=metadata")
+                        .arg(&temp_path)
+                        .arg(volume_path)
+                        .output()
+                        .await
+                        .map_err(|e| Error::Storage(format!("Failed to run qemu-img convert: {}", e)))?;
+
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        error!("qemu-img convert failed: {}", stderr);
+                        return Err(Error::Storage(format!("Failed to convert to qcow2: {}", stderr)));
+                    }
+                }
+            }
+            "raw" => {
+                // 如果检测到的格式已经是raw，直接重命名
+                if detected_format == "raw" {
+                    fs::rename(&temp_path, volume_path).await
+                        .map_err(|e| Error::Storage(format!("Failed to rename downloaded file: {}", e)))?;
+                } else {
+                    // 转换到 raw 格式
+                    let output = Command::new("qemu-img")
+                        .arg("convert")
+                        .arg("-f")
+                        .arg(&detected_format)
+                        .arg("-O")
+                        .arg("raw")
+                        .arg(&temp_path)
+                        .arg(volume_path)
+                        .output()
+                        .await
+                        .map_err(|e| Error::Storage(format!("Failed to run qemu-img convert: {}", e)))?;
+
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        error!("qemu-img convert failed: {}", stderr);
+                        return Err(Error::Storage(format!("Failed to convert to raw: {}", stderr)));
+                    }
+                }
+            }
+            _ => {
+                return Err(Error::InvalidArgument(format!(
+                    "Unsupported format: {}",
+                    format
+                )));
+            }
+        }
+
+        // 统一调整到指定大小
+        let output = Command::new("qemu-img")
+            .arg("resize")
+            .arg(volume_path)
+            .arg(format!("{}G", size_gb))
+            .output()
+            .await
+            .map_err(|e| Error::Storage(format!("Failed to run qemu-img resize: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!("qemu-img resize failed: {}", stderr);
+            return Err(Error::Storage(format!("Failed to resize {} image: {}", format, stderr)));
+        }
+
+        // 清理临时文件
+        if temp_path.exists() {
+            let _ = fs::remove_file(&temp_path).await;
+        }
+
+        info!("Successfully created volume {} from URL at {:?}", volume_id, volume_path);
+
+        // 获取实际大小
+        let actual_size_gb = self.get_file_actual_size(volume_path).await?;
+
+        Ok(VolumeInfo {
+            volume_id: volume_id.to_string(),
+            name: name.to_string(),
+            path: volume_path.to_string_lossy().to_string(),
+            size_gb,
+            actual_size_gb,
+            format: format.to_string(),
+            status: "available".to_string(),
+        })
+    }
+}
+
+
+
+
+
+#[async_trait]
+impl StorageDriver for NfsDriver {
+    async fn create_volume(
+        &self,
+        volume_id: &str,
+        name: &str,
+        size_gb: u64,
+        format: &str,
+        source: Option<&str>,  // 外部URL，可选
+    ) -> Result<VolumeInfo> {
+        info!(
+            "Creating NFS volume: id={}, name={}, size={}GB, format={}, source={:?}",
+            volume_id, name, size_gb, format, source
+        );
+
+        let volume_path = self.get_volume_path(volume_id, format);
+
+        // 检查文件是否已存在
+        if volume_path.exists() {
+            return Err(Error::AlreadyExists(format!(
+                "Volume {} already exists",
+                volume_id
+            )));
+        }
+
+        // 确保目录存在
+        if let Some(parent) = volume_path.parent() {
+            fs::create_dir_all(parent).await
+                .map_err(|e| Error::Storage(format!("Failed to create directory: {}", e)))?;
+        }
+
+        // 根据是否有source URL选择不同的创建方式
+        if let Some(source_url) = source {
+            // 从外部URL创建存储卷
+            self.create_volume_from_url_internal(volume_id, name, size_gb, format, source_url, &volume_path).await
+        } else {
+            // 创建空白存储卷
+            self.create_blank_volume(volume_id, name, size_gb, format, &volume_path).await
+        }
+    }
+
+
 
     async fn delete_volume(&self, volume_id: &str) -> Result<()> {
         info!("Deleting NFS volume: {}", volume_id);
@@ -412,4 +609,3 @@ impl StorageDriver for NfsDriver {
         "nfs"
     }
 }
-

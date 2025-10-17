@@ -14,6 +14,8 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
+import { NzDescriptionsModule } from 'ng-zorro-antd/descriptions';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { FormsModule } from '@angular/forms';
 import { StorageService, StoragePool, StorageVolume, Node, CreateStoragePoolRequest, UpdateStoragePoolRequest, CreateStorageVolumeRequest, UpdateStorageVolumeRequest, PaginatedResponse } from '../../services/storage.service';
 
@@ -35,6 +37,8 @@ import { StorageService, StoragePool, StorageVolume, Node, CreateStoragePoolRequ
     NzInputNumberModule,
     NzPopconfirmModule,
     NzTabsModule,
+    NzDescriptionsModule,
+    NzTooltipModule,
     FormsModule
   ],
   templateUrl: './storage.component.html',
@@ -46,9 +50,11 @@ export class StorageComponent implements OnInit {
   nodes: Node[] = [];
   loading = false;
   isModalVisible = false;
+  isDetailModalVisible = false;
   isEditMode = false;
   currentPool: StoragePool | null = null;
   currentVolume: StorageVolume | null = null;
+  selectedVolume: StorageVolume | null = null;
   activeTab = 'pools';
   activeTabIndex = 0;
   
@@ -80,7 +86,9 @@ export class StorageComponent implements OnInit {
     pool_id: null as number | null,
     size_gb: 20,
     volume_type: 'qcow2' as 'qcow2' | 'raw',
-    node_id: null as string | null
+    node_id: null as string | null,
+    dataSource: 'blank' as 'blank' | 'url',  // 数据源选择
+    source: null as string | null  // 外部URL
   };
 
   constructor(
@@ -274,7 +282,9 @@ export class StorageComponent implements OnInit {
       pool_id: volume.pool_id,
       size_gb: volume.size_gb,
       volume_type: volume.volume_type || 'qcow2',
-      node_id: volume.node_id || null
+      node_id: volume.node_id || null,
+      dataSource: 'blank' as 'blank' | 'url',  // 编辑时默认为空白
+      source: null as string | null  // 编辑时不支持外部URL
     };
     this.isModalVisible = true;
   }
@@ -366,13 +376,21 @@ export class StorageComponent implements OnInit {
     });
   }
 
+  // 数据源变化处理
+  onDataSourceChange(dataSource: 'blank' | 'url'): void {
+    if (dataSource === 'blank') {
+      this.volumeFormData.source = null;
+    }
+  }
+
   createVolume(): void {
     const createData: CreateStorageVolumeRequest = {
       name: this.volumeFormData.name,
       pool_id: this.volumeFormData.pool_id!,
       size_gb: this.volumeFormData.size_gb,
       volume_type: this.volumeFormData.volume_type,
-      node_id: this.volumeFormData.node_id
+      node_id: this.volumeFormData.node_id,
+      source: this.volumeFormData.dataSource === 'url' ? this.volumeFormData.source : null
     };
 
     this.storageService.createStorageVolume(createData).subscribe({
@@ -438,7 +456,9 @@ export class StorageComponent implements OnInit {
       pool_id: null,
       size_gb: 20,
       volume_type: 'qcow2',
-      node_id: null
+      node_id: null,
+      dataSource: 'blank',
+      source: null
     };
   }
 
@@ -451,5 +471,25 @@ export class StorageComponent implements OnInit {
 
   calculateUsagePercentage(used: number, total: number): number {
     return total > 0 ? Math.round((used / total) * 100) : 0;
+  }
+
+  // 从metadata中获取source信息
+  getSourceFromMetadata(metadata: any): string | null {
+    if (!metadata || typeof metadata !== 'object') {
+      return null;
+    }
+    return metadata.source || null;
+  }
+
+  // 显示存储卷详情
+  showVolumeDetails(volume: StorageVolume): void {
+    this.selectedVolume = volume;
+    this.isDetailModalVisible = true;
+  }
+
+  // 关闭详情模态框
+  handleDetailCancel(): void {
+    this.isDetailModalVisible = false;
+    this.selectedVolume = null;
   }
 }

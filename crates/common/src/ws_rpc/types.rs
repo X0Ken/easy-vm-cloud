@@ -207,6 +207,8 @@ pub struct CreateVolumeRequest {
     pub storage_type: String,
     pub format: String,
     pub pool_id: String,  // 存储池ID，Agent会自动获取存储池信息
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,  // 外部URL，用于下载初始数据
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

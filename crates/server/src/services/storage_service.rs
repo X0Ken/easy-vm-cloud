@@ -178,6 +178,14 @@ impl StorageService {
         let volume_id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
+        // 构建metadata，包含source信息
+        let mut metadata = dto.metadata.unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let Some(source) = &dto.source {
+            if let Some(metadata_obj) = metadata.as_object_mut() {
+                metadata_obj.insert("source".to_string(), serde_json::Value::String(source.clone()));
+            }
+        }
+
         // 先在数据库中创建记录
         let volume_active = VolumeActiveModel {
             id: Set(volume_id.clone()),
@@ -189,7 +197,7 @@ impl StorageService {
             status: Set(VolumeStatus::Creating.as_str().to_string()),
             node_id: Set(dto.node_id.clone()),
             vm_id: Set(None),
-            metadata: Set(dto.metadata),
+            metadata: Set(Some(metadata)),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         };
@@ -205,6 +213,7 @@ impl StorageService {
                 storage_type: pool.pool_type.clone(),
                 format: dto.volume_type.clone(),
                 pool_id: pool.id.clone(),  // Agent会自动获取存储池信息
+                source: dto.source.clone(),  // 传递外部URL
             };
             
             // 使用 WebSocket RPC 调用 Agent 创建存储卷

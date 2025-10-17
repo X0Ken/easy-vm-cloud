@@ -113,6 +113,14 @@
       color: #ff7875;
     }
   }
+  
+  &.detail-btn {
+    color: #52c41a;
+    
+    &:hover {
+      color: #73d13d;
+    }
+  }
 }
 
 // 表格样式优化
@@ -137,6 +145,18 @@
 // 模态框样式
 ::ng-deep .ant-modal-body {
   padding: 24px;
+}
+
+// 存储卷详情样式
+.volume-details {
+  .source-url-text {
+    word-break: break-all;
+    color: #333;
+  }
+  
+  .vm-detail {
+    color: #333;
+  }
 }
 
 // 响应式设计

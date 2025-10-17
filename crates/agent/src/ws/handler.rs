@@ -610,6 +610,7 @@ impl RpcHandlerRegistry {
             &req.name,
             req.size_gb,
             &req.format,
+            req.source.as_deref(),  // 传递source参数到存储层
         ).await {
             Ok(volume_info) => {
                 let response = CreateVolumeResponse {

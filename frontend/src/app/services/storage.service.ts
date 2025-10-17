@@ -32,6 +32,7 @@ export interface StorageVolume {
   node_name?: string;
   vm_id?: number;
   vm_name?: string;
+  metadata?: any;  // 包含source等元数据信息
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +71,7 @@ export interface CreateStorageVolumeRequest {
   size_gb: number;
   volume_type: 'qcow2' | 'raw';
   node_id?: string | null;
+  source?: string | null;  // 外部URL，用于下载初始数据
 }
 
 // 更新存储卷请求
@@ -151,6 +153,7 @@ export class StorageService {
       node_name: volume.node_name,
       vm_id: volume.vm_id,
       vm_name: volume.vm_name,
+      metadata: volume.metadata,
       created_at: volume.created_at,
       updated_at: volume.updated_at
     }));

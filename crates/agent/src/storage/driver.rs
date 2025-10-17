@@ -38,6 +38,7 @@ pub trait StorageDriver: Send + Sync + 'static {
         name: &str,
         size_gb: u64,
         format: &str,
+        source: Option<&str>,  // 外部URL，可选
     ) -> Result<VolumeInfo>;
 
     /// 删除存储卷

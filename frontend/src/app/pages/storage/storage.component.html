@@ -190,6 +190,10 @@
                 </td>
                 <td>
                   <div class="action-buttons">
+                    <button nz-button nzType="link" nzSize="small" (click)="showVolumeDetails(volume)" class="action-btn detail-btn">
+                      <span nz-icon nzType="eye"></span>
+                      详情
+                    </button>
                     <button nz-button nzType="link" nzSize="small" (click)="showEditVolumeModal(volume)" class="action-btn edit-btn">
                       <span nz-icon nzType="edit"></span>
                       编辑
@@ -352,6 +356,35 @@
       </nz-form-item>
 
       <nz-form-item>
+        <nz-form-label [nzSpan]="6">数据源</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            nzPlaceHolder="请选择数据源" 
+            [(ngModel)]="volumeFormData.dataSource"
+            name="dataSource"
+            [nzDisabled]="isEditMode"
+            (ngModelChange)="onDataSourceChange($event)"
+          >
+            <nz-option nzValue="blank" nzLabel="空白数据盘"></nz-option>
+            <nz-option nzValue="url" nzLabel="外部URL"></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item *ngIf="volumeFormData.dataSource === 'url'">
+        <nz-form-label [nzSpan]="6">外部URL</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            placeholder="请输入外部URL地址" 
+            [(ngModel)]="volumeFormData.source"
+            name="source"
+            [disabled]="isEditMode"
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
         <nz-form-label [nzSpan]="6">部署节点</nz-form-label>
         <nz-form-control [nzSpan]="18">
           <nz-select 
@@ -370,6 +403,54 @@
         </nz-form-control>
       </nz-form-item>
     </form>
+  </div>
+</nz-modal>
+
+<!-- 存储卷详情模态框 -->
+<nz-modal
+  [(nzVisible)]="isDetailModalVisible"
+  nzTitle="存储卷详情"
+  [nzWidth]="800"
+  (nzOnCancel)="handleDetailCancel()"
+  [nzFooter]="null"
+>
+  <div *nzModalContent>
+    <div *ngIf="selectedVolume" class="volume-details">
+      <nz-descriptions nzBordered [nzColumn]="2">
+        <nz-descriptions-item nzTitle="ID">{{ selectedVolume.id }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="名称">{{ selectedVolume.name }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="存储池">{{ selectedVolume.pool_name }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="大小">{{ formatSize(selectedVolume.size_gb) }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="卷类型">
+          <nz-tag [nzColor]="selectedVolume.volume_type === 'qcow2' ? 'green' : 'blue'">
+            {{ selectedVolume.volume_type.toUpperCase() }}
+          </nz-tag>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="状态">
+          <nz-tag [nzColor]="getStatusColor(selectedVolume.status)">
+            {{ getStatusText(selectedVolume.status) }}
+          </nz-tag>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="数据源" [nzSpan]="2">
+          <span *ngIf="getSourceFromMetadata(selectedVolume.metadata); else noSourceDetail" class="source-url-text">
+            {{ getSourceFromMetadata(selectedVolume.metadata) }}
+          </span>
+          <ng-template #noSourceDetail>
+            <span class="no-data">空白数据盘</span>
+          </ng-template>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="关联虚拟机" [nzSpan]="2">
+          <span *ngIf="selectedVolume.vm_id; else noVmDetail" class="vm-detail">
+            {{ selectedVolume.vm_name || 'Unknown VM' }} ({{ selectedVolume.vm_id }})
+          </span>
+          <ng-template #noVmDetail>
+            <span class="no-data">未关联虚拟机</span>
+          </ng-template>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="创建时间">{{ selectedVolume.created_at | date:'yyyy-MM-dd HH:mm:ss' }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="更新时间">{{ selectedVolume.updated_at | date:'yyyy-MM-dd HH:mm:ss' }}</nz-descriptions-item>
+      </nz-descriptions>
+    </div>
   </div>
 </nz-modal>
 

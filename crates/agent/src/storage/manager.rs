@@ -64,12 +64,13 @@ impl StorageManager {
         name: &str,
         size_gb: u64,
         format: &str,
+        source: Option<&str>,  // 外部URL，可选
     ) -> Result<VolumeInfo> {
-        debug!("Creating volume: pool={}, id={}, name={}, size={}GB, format={}", 
-            pool_id, volume_id, name, size_gb, format);
+        debug!("Creating volume: pool={}, id={}, name={}, size={}GB, format={}, source={:?}", 
+            pool_id, volume_id, name, size_gb, format, source);
 
         let driver = self.get_driver(pool_id).await?;
-        driver.create_volume(volume_id, name, size_gb, format).await
+        driver.create_volume(volume_id, name, size_gb, format, source).await
     }
 
     /// 删除存储卷
