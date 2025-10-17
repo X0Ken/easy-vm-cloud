@@ -7,7 +7,6 @@
       </div>
       <div class="header-actions">
         <button 
-          *ngIf="activeTab === 'networks'" 
           nz-button 
           nzType="primary" 
           (click)="showCreateNetworkModal()"
@@ -18,115 +17,107 @@
       </div>
     </div>
 
-    <!-- 标签页切换 -->
-    <nz-tabset [(nzSelectedIndex)]="activeTabIndex" (nzSelectedIndexChange)="onTabChange($event)">
-      <!-- 网络管理标签页 -->
-      <nz-tab nzTitle="网络管理" nzValue="networks">
-        <nz-spin [nzSpinning]="loading">
-          <nz-table 
-            #networksTable 
-            [nzData]="networks"
-            [nzPageSize]="pagination.per_page"
-            [nzPageIndex]="pagination.current_page"
-            [nzTotal]="pagination.total"
-            [nzFrontPagination]="false"
-            [nzShowSizeChanger]="true"
-            [nzShowQuickJumper]="true"
-            [nzShowTotal]="totalTemplate"
-            (nzPageIndexChange)="onPageIndexChange($event)"
-            (nzPageSizeChange)="onPageSizeChange($event)"
-          >
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>名称</th>
-                <th>类型</th>
-                <th>CIDR</th>
-                <th>网关</th>
-                <th>VLAN ID</th>
-                <th>MTU</th>
-                <th>状态</th>
-                <th>创建时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let network of networks">
-                <td>{{ network.id }}</td>
-                <td>
-                  <strong>{{ network.name }}</strong>
-                </td>
-                <td>
-                  <nz-tag [nzColor]="getTypeColor(network.type)">
-                    {{ getTypeText(network.type) }}
-                  </nz-tag>
-                </td>
-                <td>
-                  <span class="cidr-info">{{ network.cidr }}</span>
-                </td>
-                <td>
-                  <span class="gateway-info">{{ network.gateway }}</span>
-                </td>
-                <td>
-                  <span class="vlan-info" *ngIf="network.vlan_id; else noVlan">
-                    {{ network.vlan_id }}
-                  </span>
-                  <ng-template #noVlan>
-                    <span class="no-data">无</span>
-                  </ng-template>
-                </td>
-                <td>
-                  <span class="mtu-info">{{ network.mtu }}</span>
-                </td>
-                <td>
-                  <nz-tag [nzColor]="getStatusColor(network.status)">
-                    {{ getStatusText(network.status) }}
-                  </nz-tag>
-                </td>
-                <td>
-                  <span class="time-info">{{ network.created_at | date:'yyyy-MM-dd HH:mm' }}</span>
-                </td>
-                <td>
-                  <div class="action-buttons">
-                    <button nz-button nzType="link" nzSize="small" (click)="showEditNetworkModal(network)" class="action-btn edit-btn">
-                      <span nz-icon nzType="edit"></span>
-                      编辑
-                    </button>
-                    <button nz-button nzType="link" nzSize="small" (click)="showIPAllocationsModal(network)" class="action-btn view-btn">
-                      <span nz-icon nzType="eye"></span>
-                      IP分配
-                    </button>
-                    <button 
-                      nz-button 
-                      nzType="link" 
-                      nzSize="small" 
-                      nzDanger 
-                      class="action-btn delete-btn"
-                      nz-popconfirm
-                      nzPopconfirmTitle="确定要删除这个网络吗？"
-                      nzOkText="确定"
-                      nzCancelText="取消"
-                      (nzOnConfirm)="deleteNetwork(network)"
-                    >
-                      <span nz-icon nzType="delete"></span>
-                      删除
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </nz-table>
-        </nz-spin>
-      </nz-tab>
-
-
-    </nz-tabset>
+    <!-- 网络管理内容 -->
+    <nz-spin [nzSpinning]="loading">
+      <nz-table 
+        #networksTable 
+        [nzData]="networks"
+        [nzPageSize]="pagination.per_page"
+        [nzPageIndex]="pagination.current_page"
+        [nzTotal]="pagination.total"
+        [nzFrontPagination]="false"
+        [nzShowSizeChanger]="true"
+        [nzShowQuickJumper]="true"
+        [nzShowTotal]="totalTemplate"
+        (nzPageIndexChange)="onPageIndexChange($event)"
+        (nzPageSizeChange)="onPageSizeChange($event)"
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>类型</th>
+            <th>CIDR</th>
+            <th>网关</th>
+            <th>VLAN ID</th>
+            <th>MTU</th>
+            <th>状态</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let network of networks">
+            <td>{{ network.id }}</td>
+            <td>
+              <strong>{{ network.name }}</strong>
+            </td>
+            <td>
+              <nz-tag [nzColor]="getTypeColor(network.type)">
+                {{ getTypeText(network.type) }}
+              </nz-tag>
+            </td>
+            <td>
+              <span class="cidr-info">{{ network.cidr }}</span>
+            </td>
+            <td>
+              <span class="gateway-info">{{ network.gateway }}</span>
+            </td>
+            <td>
+              <span class="vlan-info" *ngIf="network.vlan_id; else noVlan">
+                {{ network.vlan_id }}
+              </span>
+              <ng-template #noVlan>
+                <span class="no-data">无</span>
+              </ng-template>
+            </td>
+            <td>
+              <span class="mtu-info">{{ network.mtu }}</span>
+            </td>
+            <td>
+              <nz-tag [nzColor]="getStatusColor(network.status)">
+                {{ getStatusText(network.status) }}
+              </nz-tag>
+            </td>
+            <td>
+              <span class="time-info">{{ network.created_at | date:'yyyy-MM-dd HH:mm' }}</span>
+            </td>
+            <td>
+              <div class="action-buttons">
+                <button nz-button nzType="link" nzSize="small" (click)="showEditNetworkModal(network)" class="action-btn edit-btn">
+                  <span nz-icon nzType="edit"></span>
+                  编辑
+                </button>
+                <button nz-button nzType="link" nzSize="small" (click)="showIPAllocationsModal(network)" class="action-btn view-btn">
+                  <span nz-icon nzType="eye"></span>
+                  IP分配
+                </button>
+                <button 
+                  nz-button 
+                  nzType="link" 
+                  nzSize="small" 
+                  nzDanger 
+                  class="action-btn delete-btn"
+                  nz-popconfirm
+                  nzPopconfirmTitle="确定要删除这个网络吗？"
+                  nzOkText="确定"
+                  nzCancelText="取消"
+                  (nzOnConfirm)="deleteNetwork(network)"
+                >
+                  <span nz-icon nzType="delete"></span>
+                  删除
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </nz-spin>
   </nz-card>
 </div>
 
 <!-- 创建/编辑网络模态框 -->
 <nz-modal
-  *ngIf="activeTab === 'networks'"
   [(nzVisible)]="isModalVisible"
   [nzTitle]="isEditMode ? '编辑网络' : '新建网络'"
   [nzWidth]="600"

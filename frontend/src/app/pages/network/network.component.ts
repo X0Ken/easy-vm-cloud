@@ -13,7 +13,6 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
-import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { FormsModule } from '@angular/forms';
 import { NetworkService, Network, IPAllocation, Node, CreateNetworkRequest, UpdateNetworkRequest, PaginatedResponse } from '../../services/network.service';
 
@@ -34,7 +33,6 @@ import { NetworkService, Network, IPAllocation, Node, CreateNetworkRequest, Upda
     NzSelectModule,
     NzInputNumberModule,
     NzPopconfirmModule,
-    NzTabsModule,
     FormsModule
   ],
   templateUrl: './network.component.html',
@@ -60,8 +58,6 @@ export class NetworkComponent implements OnInit {
     has_next: false,
     has_prev: false
   };
-  activeTab = 'networks';
-  activeTabIndex = 0;
   
   // 分页状态
   pagination = {
@@ -131,25 +127,14 @@ export class NetworkComponent implements OnInit {
     });
   }
 
-  onTabChange(tabIndex: number): void {
-    this.activeTabIndex = tabIndex;
-    this.activeTab = 'networks'; // 现在只有网络管理tab
-    this.loadDataForActiveTab();
-  }
-
-  loadDataForActiveTab(): void {
-    if (this.activeTab === 'networks') {
-      this.loadNetworks();
-    }
-  }
 
   onPageIndexChange(page: number): void {
-    this.loadDataForActiveTab();
+    this.loadNetworks(page);
   }
 
   onPageSizeChange(pageSize: number): void {
     this.pagination.per_page = pageSize;
-    this.loadDataForActiveTab();
+    this.loadNetworks(1);
   }
 
   getStatusColor(status: string): string {
@@ -216,12 +201,10 @@ export class NetworkComponent implements OnInit {
 
 
   handleOk(): void {
-    if (this.activeTab === 'networks') {
-      if (this.isEditMode && this.currentNetwork) {
-        this.updateNetwork();
-      } else {
-        this.createNetwork();
-      }
+    if (this.isEditMode && this.currentNetwork) {
+      this.updateNetwork();
+    } else {
+      this.createNetwork();
     }
   }
 
