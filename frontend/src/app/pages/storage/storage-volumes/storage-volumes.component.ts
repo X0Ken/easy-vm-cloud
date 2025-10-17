@@ -13,14 +13,12 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
-import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzDescriptionsModule } from 'ng-zorro-antd/descriptions';
-import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { FormsModule } from '@angular/forms';
-import { StorageService, StoragePool, StorageVolume, Node, CreateStoragePoolRequest, UpdateStoragePoolRequest, CreateStorageVolumeRequest, UpdateStorageVolumeRequest, PaginatedResponse } from '../../services/storage.service';
+import { StorageService, StorageVolume, StoragePool, Node, CreateStorageVolumeRequest, UpdateStorageVolumeRequest, PaginatedResponse } from '../../../services/storage.service';
 
 @Component({
-  selector: 'app-storage',
+  selector: 'app-storage-volumes',
   standalone: true,
   imports: [
     CommonModule,
@@ -36,31 +34,26 @@ import { StorageService, StoragePool, StorageVolume, Node, CreateStoragePoolRequ
     NzSelectModule,
     NzInputNumberModule,
     NzPopconfirmModule,
-    NzTabsModule,
     NzDescriptionsModule,
-    NzTooltipModule,
     FormsModule
   ],
-  templateUrl: './storage.component.html',
-  styleUrls: ['./storage.component.scss']
+  templateUrl: './storage-volumes.component.html',
+  styleUrls: ['./storage-volumes.component.scss']
 })
-export class StorageComponent implements OnInit {
-  storagePools: StoragePool[] = [];
+export class StorageVolumesComponent implements OnInit {
   storageVolumes: StorageVolume[] = [];
+  storagePools: StoragePool[] = [];
   nodes: Node[] = [];
   loading = false;
   isModalVisible = false;
   isDetailModalVisible = false;
   isEditMode = false;
-  currentPool: StoragePool | null = null;
   currentVolume: StorageVolume | null = null;
   selectedVolume: StorageVolume | null = null;
-  activeTab = 'pools';
-  activeTabIndex = 0;
   
   // 加载状态标志
-  poolsLoaded = false;
   volumesLoaded = false;
+  poolsLoaded = false;
   nodesLoaded = false;
   
   // 分页状态
@@ -73,13 +66,6 @@ export class StorageComponent implements OnInit {
     has_prev: false
   };
   
-  // 存储池表单数据
-  poolFormData = {
-    name: '',
-    type: 'nfs' as 'lvm' | 'nfs' | 'ceph' | 'iscsi', // 默认选择NFS
-    total_size_gb: 100
-  };
-
   // 存储卷表单数据
   volumeFormData = {
     name: '',
@@ -97,33 +83,7 @@ export class StorageComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // 初始化时加载默认tab（存储池）的数据
-    this.loadDataForActiveTab();
-  }
-
-  loadStoragePools(page: number = 1): void {
-    this.loading = true;
-    this.storageService.getStoragePools(page, this.pagination.per_page).subscribe({
-      next: (response: PaginatedResponse<StoragePool>) => {
-        this.storagePools = response.data;
-        // 安全地更新分页信息，确保所有必要的属性都存在
-        this.pagination = {
-          current_page: response.pagination?.current_page || page,
-          per_page: response.pagination?.per_page || this.pagination.per_page,
-          total: response.pagination?.total || 0,
-          total_pages: response.pagination?.total_pages || 0,
-          has_next: response.pagination?.has_next || false,
-          has_prev: response.pagination?.has_prev || false
-        };
-        this.loading = false;
-        this.poolsLoaded = true;
-      },
-      error: (error) => {
-        console.error('获取存储池列表失败:', error);
-        this.message.error('获取存储池列表失败');
-        this.loading = false;
-      }
-    });
+    this.loadStorageVolumes();
   }
 
   loadStorageVolumes(page: number = 1): void {
@@ -151,6 +111,19 @@ export class StorageComponent implements OnInit {
     });
   }
 
+  loadStoragePools(): void {
+    this.storageService.getStoragePools(1, 1000).subscribe({
+      next: (response: PaginatedResponse<StoragePool>) => {
+        this.storagePools = response.data;
+        this.poolsLoaded = true;
+      },
+      error: (error) => {
+        console.error('获取存储池列表失败:', error);
+        this.message.error('获取存储池列表失败');
+      }
+    });
+  }
+
   loadNodes(): void {
     this.storageService.getNodes().subscribe({
       next: (nodes: Node[]) => {
@@ -164,35 +137,13 @@ export class StorageComponent implements OnInit {
     });
   }
 
-  onTabChange(tabIndex: number): void {
-    const tabs = ['pools', 'volumes'];
-    this.activeTab = tabs[tabIndex];
-    this.activeTabIndex = tabIndex;
-    this.loadDataForActiveTab();
-  }
-
-  loadDataForActiveTab(): void {
-    switch (this.activeTab) {
-      case 'pools':
-        if (!this.poolsLoaded) {
-          this.loadStoragePools();
-        }
-        break;
-      case 'volumes':
-        if (!this.volumesLoaded) {
-          this.loadStorageVolumes();
-        }
-        break;
-    }
-  }
-
   onPageIndexChange(page: number): void {
-    this.loadDataForActiveTab();
+    this.loadStorageVolumes(page);
   }
 
   onPageSizeChange(pageSize: number): void {
     this.pagination.per_page = pageSize;
-    this.loadDataForActiveTab();
+    this.loadStorageVolumes(this.pagination.current_page);
   }
 
   getStatusColor(status: string): string {
@@ -223,50 +174,15 @@ export class StorageComponent implements OnInit {
     return statusTexts[status] || status;
   }
 
-  getTypeText(type: string): string {
-    const typeTexts: { [key: string]: string } = {
-      'lvm': 'LVM',
-      'nfs': 'NFS',
-      'ceph': 'Ceph',
-      'iscsi': 'iSCSI'
-    };
-    return typeTexts[type] || type;
-  }
-
-  getTypeColor(type: string): string {
-    const typeColors: { [key: string]: string } = {
-      'lvm': 'blue',
-      'nfs': 'green',
-      'ceph': 'purple',
-      'iscsi': 'orange'
-    };
-    return typeColors[type] || 'default';
-  }
-
-  showCreatePoolModal(): void {
-    this.isEditMode = false;
-    this.currentPool = null;
-    this.resetPoolForm();
-    this.isModalVisible = true;
-  }
-
-  showEditPoolModal(pool: StoragePool): void {
-    this.isEditMode = true;
-    this.currentPool = pool;
-    this.poolFormData = {
-      name: pool.name,
-      type: pool.type,
-      total_size_gb: pool.total_size_gb
-    };
-    this.isModalVisible = true;
-  }
-
   showCreateVolumeModal(): void {
     this.isEditMode = false;
     this.currentVolume = null;
     this.resetVolumeForm();
     
-    // 在新建存储卷时加载node信息
+    // 在新建存储卷时加载相关数据
+    if (!this.poolsLoaded) {
+      this.loadStoragePools();
+    }
     if (!this.nodesLoaded) {
       this.loadNodes();
     }
@@ -290,90 +206,16 @@ export class StorageComponent implements OnInit {
   }
 
   handleOk(): void {
-    if (this.activeTab === 'pools') {
-      if (this.isEditMode && this.currentPool) {
-        this.updatePool();
-      } else {
-        this.createPool();
-      }
+    if (this.isEditMode && this.currentVolume) {
+      this.updateVolume();
     } else {
-      if (this.isEditMode && this.currentVolume) {
-        this.updateVolume();
-      } else {
-        this.createVolume();
-      }
+      this.createVolume();
     }
   }
 
   handleCancel(): void {
     this.isModalVisible = false;
-    this.resetPoolForm();
     this.resetVolumeForm();
-  }
-
-  createPool(): void {
-    const createData: CreateStoragePoolRequest = {
-      name: this.poolFormData.name,
-      type: this.poolFormData.type,
-      total_size_gb: this.poolFormData.total_size_gb
-    };
-
-    this.storageService.createStoragePool(createData).subscribe({
-      next: (response) => {
-        this.message.success('存储池创建成功');
-        this.isModalVisible = false;
-        this.resetPoolForm();
-        this.loadStoragePools(this.pagination.current_page);
-      },
-      error: (error) => {
-        console.error('创建存储池失败:', error);
-        this.message.error('创建存储池失败');
-      }
-    });
-  }
-
-  updatePool(): void {
-    if (!this.currentPool) return;
-    
-    const updateData: UpdateStoragePoolRequest = {
-      name: this.poolFormData.name,
-      total_size_gb: this.poolFormData.total_size_gb
-    };
-
-    this.storageService.updateStoragePool(this.currentPool.id, updateData).subscribe({
-      next: (response) => {
-        this.message.success('存储池更新成功');
-        this.isModalVisible = false;
-        this.resetPoolForm();
-        this.loadStoragePools(this.pagination.current_page);
-      },
-      error: (error) => {
-        console.error('更新存储池失败:', error);
-        this.message.error('更新存储池失败');
-      }
-    });
-  }
-
-  deletePool(pool: StoragePool): void {
-    this.storageService.deleteStoragePool(pool.id).subscribe({
-      next: () => {
-        this.message.success('存储池删除成功');
-        this.loadStoragePools(this.pagination.current_page);
-      },
-      error: (error) => {
-        console.error('删除存储池失败:', error);
-        
-        // 尝试从错误响应中提取具体的错误信息
-        let errorMessage = '删除存储池失败';
-        if (error.error && error.error.message) {
-          errorMessage = error.error.message;
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        
-        this.message.error(errorMessage);
-      }
-    });
   }
 
   // 数据源变化处理
@@ -442,14 +284,6 @@ export class StorageComponent implements OnInit {
     });
   }
 
-  resetPoolForm(): void {
-    this.poolFormData = {
-      name: '',
-      type: 'nfs', // 默认选择NFS
-      total_size_gb: 100
-    };
-  }
-
   resetVolumeForm(): void {
     this.volumeFormData = {
       name: '',
@@ -467,10 +301,6 @@ export class StorageComponent implements OnInit {
       return `${(sizeGb / 1024).toFixed(1)} TB`;
     }
     return `${sizeGb} GB`;
-  }
-
-  calculateUsagePercentage(used: number, total: number): number {
-    return total > 0 ? Math.round((used / total) * 100) : 0;
   }
 
   // 从metadata中获取source信息

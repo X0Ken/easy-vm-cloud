@@ -15,6 +15,8 @@ export interface StoragePool {
   available_size_gb: number;
   node_id: string;
   node_name: string;
+  config?: any;  // 存储池配置
+  metadata?: any;  // 元数据
   created_at: string;
   updated_at: string;
 }
@@ -40,9 +42,9 @@ export interface StorageVolume {
 // 创建存储池请求
 export interface CreateStoragePoolRequest {
   name: string;
-  type: 'lvm' | 'nfs' | 'ceph' | 'iscsi';
-  total_size_gb: number;
-  config?: {
+  pool_type: 'lvm' | 'nfs' | 'ceph' | 'iscsi';
+  capacity_gb?: number;
+  config: {
     // LVM 配置
     volume_group?: string;
     // NFS 配置
@@ -55,6 +57,7 @@ export interface CreateStoragePoolRequest {
     iscsi_target?: string;
     iscsi_portal?: string;
   };
+  metadata?: any;
 }
 
 // 更新存储池请求

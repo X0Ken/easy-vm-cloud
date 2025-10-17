@@ -3,6 +3,15 @@ import { Routes } from '@angular/router';
 export const STORAGE_ROUTES: Routes = [
   {
     path: '',
-    loadComponent: () => import('./storage.component').then(m => m.StorageComponent)
+    redirectTo: 'pools',
+    pathMatch: 'full'
+  },
+  {
+    path: 'pools',
+    loadComponent: () => import('./storage-pools/storage-pools.component').then(m => m.StoragePoolsComponent)
+  },
+  {
+    path: 'volumes',
+    loadComponent: () => import('./storage-volumes/storage-volumes.component').then(m => m.StorageVolumesComponent)
   }
 ];

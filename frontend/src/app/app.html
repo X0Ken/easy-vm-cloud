@@ -52,9 +52,15 @@
       <li nz-submenu [nzOpen]="storageManagementOpen" nzTitle="存储管理" nzIcon="database">
         <ul>
           <li nz-menu-item nzMatchRouter>
-            <a routerLink="/storage">
+            <a routerLink="/storage/pools">
               <span nz-icon nzType="database"></span>
-              <span>存储管理</span>
+              <span>存储池</span>
+            </a>
+          </li>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/storage/volumes">
+              <span nz-icon nzType="hdd"></span>
+              <span>存储卷</span>
             </a>
           </li>
         </ul>

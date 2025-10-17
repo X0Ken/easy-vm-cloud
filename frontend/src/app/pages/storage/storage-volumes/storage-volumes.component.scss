@@ -1,0 +1,109 @@
+.storage-volumes-container {
+  background: #f0f2f5;
+  min-height: 100vh;
+  
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    
+    .header-content {
+      h2 {
+        color: #1890ff;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      
+      p {
+        color: #666;
+        margin: 0;
+      }
+    }
+    
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+  }
+  
+  .size-info {
+    font-weight: 500;
+    color: #333;
+  }
+  
+  .time-info {
+    color: #666;
+    font-size: 12px;
+  }
+  
+  .pool-info {
+    .pool-id {
+      color: #999;
+      font-size: 12px;
+    }
+  }
+  
+  .vm-info {
+    .vm-id {
+      color: #999;
+      font-size: 12px;
+    }
+  }
+  
+  .no-data {
+    color: #999;
+    font-style: italic;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+    
+    .action-btn {
+      padding: 4px 8px;
+      height: auto;
+      font-size: 12px;
+      
+      &.detail-btn {
+        color: #52c41a;
+        
+        &:hover {
+          color: #73d13d;
+        }
+      }
+      
+      &.edit-btn {
+        color: #1890ff;
+        
+        &:hover {
+          color: #40a9ff;
+        }
+      }
+      
+      &.delete-btn {
+        color: #ff4d4f;
+        
+        &:hover {
+          color: #ff7875;
+        }
+      }
+    }
+  }
+  
+  .volume-details {
+    .source-url-text {
+      word-break: break-all;
+      color: #1890ff;
+    }
+    
+    .vm-detail {
+      color: #333;
+    }
+    
+    .no-data {
+      color: #999;
+      font-style: italic;
+    }
+  }
+}
