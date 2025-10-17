@@ -39,6 +39,14 @@
 - **数据库**: PostgreSQL
 - **通信协议**: Server ↔ 前端使用 REST API，Server ↔ Agent 使用 WebSocket 实现双向 RPC 调用
 
+## 快速部署
+
+一键部署 Easy VM Cloud：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/x0ken/easy-vm-cloud/main/scripts/install.sh | sudo bash
+```
+
 ## 文档
 
 - [快速开始指南](./docs/quick-start.md)
