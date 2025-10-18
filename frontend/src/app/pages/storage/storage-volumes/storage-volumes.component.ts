@@ -47,9 +47,11 @@ export class StorageVolumesComponent implements OnInit {
   loading = false;
   isModalVisible = false;
   isDetailModalVisible = false;
+  isCloneModalVisible = false;
   isEditMode = false;
   currentVolume: StorageVolume | null = null;
   selectedVolume: StorageVolume | null = null;
+  cloneSourceVolume: StorageVolume | null = null;
   
   // 加载状态标志
   volumesLoaded = false;
@@ -74,6 +76,11 @@ export class StorageVolumesComponent implements OnInit {
     volume_type: 'qcow2' as 'qcow2' | 'raw',
     dataSource: 'blank' as 'blank' | 'url',  // 数据源选择
     source: null as string | null  // 外部URL
+  };
+
+  // 克隆表单数据
+  cloneFormData = {
+    targetName: ''
   };
 
   constructor(
@@ -317,5 +324,48 @@ export class StorageVolumesComponent implements OnInit {
   handleDetailCancel(): void {
     this.isDetailModalVisible = false;
     this.selectedVolume = null;
+  }
+
+  // 显示克隆存储卷模态框
+  showCloneVolumeModal(volume: StorageVolume): void {
+    this.cloneSourceVolume = volume;
+    this.cloneFormData = {
+      targetName: `${volume.name}-clone`
+    };
+    this.isCloneModalVisible = true;
+  }
+
+  // 处理克隆确认
+  handleCloneOk(): void {
+    if (!this.cloneSourceVolume || !this.cloneFormData.targetName.trim()) {
+      this.message.error('请输入新存储卷名称');
+      return;
+    }
+
+    this.loading = true;
+    this.storageService.cloneVolume(
+      this.cloneSourceVolume.id,
+      this.cloneFormData.targetName.trim()
+    ).subscribe({
+      next: (clonedVolume: StorageVolume) => {
+        this.message.success('存储卷克隆成功');
+        this.isCloneModalVisible = false;
+        this.cloneSourceVolume = null;
+        this.cloneFormData = { targetName: '' };
+        this.loadStorageVolumes(this.pagination.current_page);
+      },
+      error: (error) => {
+        this.loading = false;
+        console.error('克隆存储卷失败:', error);
+        this.message.error('克隆存储卷失败: ' + (error.error?.message || error.message || '未知错误'));
+      }
+    });
+  }
+
+  // 处理克隆取消
+  handleCloneCancel(): void {
+    this.isCloneModalVisible = false;
+    this.cloneSourceVolume = null;
+    this.cloneFormData = { targetName: '' };
   }
 }

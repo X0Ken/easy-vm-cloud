@@ -110,6 +110,13 @@ pub struct ResizeVolumeDto {
     pub new_size_gb: i64,
 }
 
+/// 克隆存储卷 DTO
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloneVolumeDto {
+    pub source_volume_id: String,
+    pub target_name: String,
+}
+
 /// 存储卷响应 DTO
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VolumeResponse {

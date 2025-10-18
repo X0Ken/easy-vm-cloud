@@ -157,6 +157,7 @@ impl RpcHandlerRegistry {
             "delete_volume" => self.handle_delete_volume(payload).await,
             "resize_volume" => self.handle_resize_volume(payload).await,
             "snapshot_volume" => self.handle_snapshot_volume(payload).await,
+            "clone_volume" => self.handle_clone_volume(payload).await,
             "get_volume_info" => self.handle_get_volume_info(payload).await,
             "list_volumes" => self.handle_list_volumes(payload).await,
             
@@ -715,6 +716,42 @@ impl RpcHandlerRegistry {
                 Err(RpcError::new(
                     RpcErrorCode::StorageError,
                     format!("创建快照失败: {}", e),
+                ))
+            }
+        }
+    }
+
+    async fn handle_clone_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+        let req: CloneVolumeRequest = serde_json::from_value(payload)
+            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
+
+        info!("克隆存储卷: {} -> {} (名称: {})", req.source_volume_id, req.target_volume_id, req.target_name);
+
+        // 确保存储池已注册
+        if let Err(e) = self.ensure_storage_pool_registered(&req.pool_id).await {
+            error!("确保存储池注册失败: {}", e);
+            return Err(e);
+        }
+
+        match self.storage.clone_volume(
+            &req.pool_id,
+            &req.source_volume_id,
+            &req.target_volume_id,
+            &req.target_name,
+        ).await {
+            Ok(volume_info) => {
+                let response = CloneVolumeResponse {
+                    success: true,
+                    message: "存储卷克隆成功".to_string(),
+                    path: Some(volume_info.path),
+                };
+                Ok(serde_json::to_value(response).unwrap())
+            }
+            Err(e) => {
+                error!("克隆存储卷失败: {}", e);
+                Err(RpcError::new(
+                    RpcErrorCode::StorageError,
+                    format!("克隆存储卷失败: {}", e),
                 ))
             }
         }

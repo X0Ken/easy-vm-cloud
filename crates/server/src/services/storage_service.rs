@@ -11,14 +11,14 @@ use crate::db::models::storage_pool::{
     Entity as StoragePoolEntity, Column as StoragePoolColumn, ActiveModel as StoragePoolActiveModel,
 };
 use crate::db::models::volume::{
-    CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, VolumeListResponse, VolumeResponse, VolumeStatus,
+    CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, CloneVolumeDto, VolumeListResponse, VolumeResponse, VolumeStatus,
     Entity as VolumeEntity, Column as VolumeColumn, ActiveModel as VolumeActiveModel,
 };
 use crate::db::models::vm::Entity as VmEntity;
 use crate::app_state::AppState;
 use common::ws_rpc::{
-    CreateVolumeRequest, DeleteVolumeRequest, ResizeVolumeRequest, SnapshotVolumeRequest,
-    CreateVolumeResponse, DeleteVolumeResponse, ResizeVolumeResponse,
+    CreateVolumeRequest, DeleteVolumeRequest, ResizeVolumeRequest, SnapshotVolumeRequest, CloneVolumeRequest,
+    CreateVolumeResponse, DeleteVolumeResponse, ResizeVolumeResponse, CloneVolumeResponse,
 };
 use tracing::warn;
 use std::time::Duration;
@@ -564,6 +564,91 @@ impl StorageService {
 
         // 临时返回
         Ok(format!("{}-{}", volume_id, snapshot_name))
+    }
+
+    /// 克隆存储卷
+    pub async fn clone_volume(&self, dto: CloneVolumeDto) -> anyhow::Result<VolumeResponse> {
+        let db = &self.state.sea_db();
+
+        // 获取源存储卷信息
+        let source_volume = VolumeEntity::find_by_id(&dto.source_volume_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("源存储卷不存在"))?;
+
+        // 克隆必须在同一存储池内
+        let target_pool_id = source_volume.pool_id.clone();
+        
+        // 检查存储池是否存在
+        let target_pool = StoragePoolEntity::find_by_id(&target_pool_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("存储池不存在"))?;
+
+        let target_volume_id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+
+        // 先在数据库中创建目标卷记录
+        let target_volume_active = VolumeActiveModel {
+            id: Set(target_volume_id.clone()),
+            name: Set(dto.target_name.clone()),
+            volume_type: Set(source_volume.volume_type.clone()),
+            size_gb: Set(source_volume.size_gb),
+            pool_id: Set(target_pool_id.clone()),
+            path: Set(None),
+            status: Set(VolumeStatus::Creating.as_str().to_string()),
+            vm_id: Set(None),
+            metadata: Set(Some(serde_json::json!({
+                "source_volume_id": dto.source_volume_id,
+                "cloned_at": now.to_rfc3339()
+            }))),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        };
+
+        let mut target_volume = target_volume_active.insert(db).await?;
+
+        // 调用 Agent 克隆存储卷
+        if let Some(node_id) = &target_pool.node_id {
+            let request = CloneVolumeRequest {
+                source_volume_id: dto.source_volume_id.clone(),
+                target_volume_id: target_volume_id.clone(),
+                target_name: dto.target_name.clone(),
+                pool_id: target_pool_id.clone(),
+            };
+            
+            // 使用 WebSocket RPC 调用 Agent 克隆存储卷
+            let response_msg = self.state.agent_manager()
+                .call(
+                    node_id,
+                    "clone_volume",
+                    serde_json::to_value(&request)?,
+                    Duration::from_secs(300)  // 克隆可能需要较长时间
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
+
+            let result: CloneVolumeResponse = serde_json::from_value(
+                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+            )?;
+
+            if !result.success {
+                // 克隆失败，删除数据库记录
+                VolumeEntity::delete_by_id(&target_volume_id).exec(db).await?;
+                return Err(anyhow::anyhow!("Agent 克隆存储卷失败: {}", result.message));
+            }
+
+            // 更新卷状态和路径
+            let mut target_volume_active: VolumeActiveModel = target_volume.into();
+            target_volume_active.status = Set(VolumeStatus::Available.as_str().to_string());
+            if let Some(path) = result.path {
+                target_volume_active.path = Set(Some(path));
+            }
+            target_volume_active.updated_at = Set(Utc::now().into());
+            target_volume = target_volume_active.update(db).await?;
+        }
+
+        Ok(VolumeResponse::from(target_volume))
     }
 }
 

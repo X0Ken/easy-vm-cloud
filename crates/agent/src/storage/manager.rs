@@ -113,6 +113,21 @@ impl StorageManager {
         driver.create_snapshot(volume_id, snapshot_name).await
     }
 
+    /// 克隆存储卷
+    pub async fn clone_volume(
+        &self,
+        pool_id: &str,
+        source_volume_id: &str,
+        target_volume_id: &str,
+        target_name: &str,
+    ) -> Result<VolumeInfo> {
+        debug!("Cloning volume: pool={}, source={}, target={}, name={}", 
+            pool_id, source_volume_id, target_volume_id, target_name);
+
+        let driver = self.get_driver(pool_id).await?;
+        driver.clone_volume(source_volume_id, target_volume_id, target_name).await
+    }
+
     /// 检查存储池是否已注册
     pub async fn is_pool_registered(&self, pool_id: &str) -> bool {
         let drivers = self.drivers.read().await;

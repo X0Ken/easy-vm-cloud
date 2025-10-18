@@ -87,6 +87,10 @@
                   <span nz-icon nzType="edit"></span>
                   编辑
                 </button>
+                <button nz-button nzType="link" nzSize="small" (click)="showCloneVolumeModal(volume)" class="action-btn clone-btn">
+                  <span nz-icon nzType="copy"></span>
+                  克隆
+                </button>
                 <button 
                   nz-button 
                   nzType="link" 
@@ -261,6 +265,54 @@
         <nz-descriptions-item nzTitle="更新时间">{{ selectedVolume.updated_at | date:'yyyy-MM-dd HH:mm:ss' }}</nz-descriptions-item>
       </nz-descriptions>
     </div>
+  </div>
+</nz-modal>
+
+<!-- 克隆存储卷模态框 -->
+<nz-modal
+  [(nzVisible)]="isCloneModalVisible"
+  nzTitle="克隆存储卷"
+  [nzWidth]="500"
+  (nzOnCancel)="handleCloneCancel()"
+  (nzOnOk)="handleCloneOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">源存储卷</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            [value]="cloneSourceVolume?.name || ''"
+            disabled
+          />
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">新存储卷名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            [(ngModel)]="cloneFormData.targetName"
+            placeholder="请输入新存储卷名称" 
+            name="targetName"
+          />
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">目标存储池</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            [value]="cloneSourceVolume?.pool_name || '同源存储池'"
+            disabled
+          />
+          <div class="form-help-text">
+            <small>克隆将在同一存储池内创建</small>
+          </div>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
   </div>
 </nz-modal>
 

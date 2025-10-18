@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::db::models::storage_pool::{CreateStoragePoolDto, UpdateStoragePoolDto, StoragePoolListResponse, StoragePoolResponse};
-use crate::db::models::volume::{CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, VolumeListResponse, VolumeResponse};
+use crate::db::models::volume::{CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, CloneVolumeDto, VolumeListResponse, VolumeResponse};
 use crate::services::storage_service::StorageService;
 
 /// API 错误响应
@@ -108,6 +108,7 @@ pub fn routes() -> Router<AppState> {
         .route("/volumes/:volume_id", delete(delete_volume))
         .route("/volumes/:volume_id/resize", post(resize_volume))
         .route("/volumes/:volume_id/snapshot", post(create_snapshot))
+        .route("/volumes/:volume_id/clone", post(clone_volume))
 }
 
 // ==================== 存储池接口 ====================
@@ -267,5 +268,16 @@ async fn create_snapshot(
     }
     
     Ok(Json(SnapshotResponse { snapshot_id }))
+}
+
+/// 克隆存储卷
+async fn clone_volume(
+    State(state): State<AppState>,
+    Path(volume_id): Path<String>,
+    Json(dto): Json<CloneVolumeDto>,
+) -> Result<impl IntoResponse, ApiError> {
+    let service = StorageService::new(state);
+    let volume = service.clone_volume(dto).await?;
+    Ok((StatusCode::CREATED, Json(volume)))
 }
 

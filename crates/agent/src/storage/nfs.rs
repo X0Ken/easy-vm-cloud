@@ -605,6 +605,91 @@ impl StorageDriver for NfsDriver {
         }
     }
 
+    async fn clone_volume(
+        &self,
+        source_volume_id: &str,
+        target_volume_id: &str,
+        target_name: &str,
+    ) -> Result<VolumeInfo> {
+        info!("Cloning volume {} to {} with name {}", source_volume_id, target_volume_id, target_name);
+
+        // 尝试找到源卷文件
+        let formats = vec!["qcow2", "raw"];
+        let mut source_path = None;
+        let mut format = "raw";
+
+        for fmt in formats {
+            let path = self.get_volume_path(source_volume_id, fmt);
+            if path.exists() {
+                source_path = Some(path);
+                format = fmt;
+                break;
+            }
+        }
+
+        let source_path = source_path.ok_or_else(|| {
+            Error::NotFound(format!("Source volume {} not found", source_volume_id))
+        })?;
+
+        let target_path = self.get_volume_path(target_volume_id, format);
+
+        // 检查目标文件是否已存在
+        if target_path.exists() {
+            return Err(Error::AlreadyExists(format!("Target volume {} already exists", target_volume_id)));
+        }
+
+        // 根据格式选择克隆策略 - 使用完整数据拷贝确保独立性
+        match format {
+            "qcow2" => {
+                // 使用 qemu-img convert 进行完整数据拷贝，确保克隆卷完全独立
+                let output = Command::new("qemu-img")
+                    .arg("convert")
+                    .arg("-f")
+                    .arg("qcow2")
+                    .arg("-O")
+                    .arg("qcow2")
+                    .arg("-o")
+                    .arg("preallocation=metadata")
+                    .arg(&source_path)
+                    .arg(&target_path)
+                    .output()
+                    .await
+                    .map_err(|e| Error::Storage(format!("Failed to run qemu-img convert: {}", e)))?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("qemu-img convert failed: {}", stderr);
+                    return Err(Error::Storage(format!("Failed to create qcow2 clone: {}", stderr)));
+                }
+            }
+            "raw" => {
+                // raw 格式直接拷贝
+                fs::copy(&source_path, &target_path).await
+                    .map_err(|e| Error::Storage(format!("Failed to copy raw volume: {}", e)))?;
+            }
+            _ => {
+                return Err(Error::Storage(format!("Unsupported volume format: {}", format)));
+            }
+        }
+
+        // 获取源卷信息
+        let source_info = self.get_volume_info(source_volume_id).await?;
+
+        // 创建目标卷信息
+        let target_info = VolumeInfo {
+            volume_id: target_volume_id.to_string(),
+            name: target_name.to_string(),
+            path: target_path.to_string_lossy().to_string(),
+            size_gb: source_info.size_gb,
+            actual_size_gb: source_info.actual_size_gb, // 完整拷贝后实际大小等于源卷
+            format: format.to_string(),
+            status: "available".to_string(),
+        };
+
+        info!("Successfully cloned volume {} to {}", source_volume_id, target_volume_id);
+        Ok(target_info)
+    }
+
     fn driver_type(&self) -> &str {
         "nfs"
     }

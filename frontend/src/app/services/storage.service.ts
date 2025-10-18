@@ -242,7 +242,8 @@ export class StorageService {
   // 克隆存储卷
   cloneVolume(id: number, newName: string): Observable<StorageVolume> {
     return this.http.post<StorageVolume>(this.apiConfig.buildUrl(`/storage/volumes/${id}/clone`), {
-      name: newName
+      source_volume_id: id.toString(),
+      target_name: newName
     });
   }
 

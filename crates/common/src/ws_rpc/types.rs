@@ -269,6 +269,22 @@ pub struct SnapshotVolumeResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloneVolumeRequest {
+    pub source_volume_id: String,
+    pub target_volume_id: String,
+    pub target_name: String,
+    pub pool_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloneVolumeResponse {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetVolumeInfoRequest {
     pub volume_id: String,
     pub pool_id: String,

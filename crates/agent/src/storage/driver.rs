@@ -56,6 +56,14 @@ pub trait StorageDriver: Send + Sync + 'static {
     /// 创建快照
     async fn create_snapshot(&self, volume_id: &str, snapshot_name: &str) -> Result<String>;
 
+    /// 克隆存储卷
+    async fn clone_volume(
+        &self,
+        source_volume_id: &str,
+        target_volume_id: &str,
+        target_name: &str,
+    ) -> Result<VolumeInfo>;
+
     /// 获取存储驱动类型
     fn driver_type(&self) -> &str;
 }
