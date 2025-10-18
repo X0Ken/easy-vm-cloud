@@ -1,24 +1,29 @@
 .vms-container {
   background: #f0f2f5;
   min-height: 100vh;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
   
-  .header-content {
-    h2 {
-      color: #1890ff;
-      margin-bottom: 8px;
-      font-weight: 600;
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    
+    .header-content {
+      h2 {
+        color: #1890ff;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      
+      p {
+        color: #666;
+        margin: 0;
+      }
     }
     
-    p {
-      color: #666;
-      margin: 0;
+    .header-actions {
+      display: flex;
+      gap: 12px;
     }
   }
 }
@@ -46,75 +51,70 @@
   font-size: 12px;
 }
 
-.action-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
+.size-info {
+  font-weight: 500;
+  color: #333;
 }
 
-.action-btn {
-  font-size: 12px;
-  padding: 2px 6px;
-  height: auto;
-  line-height: 1.2;
+.action-buttons {
+  display: flex;
+  gap: 8px;
   
-  &.start-btn {
-    color: #52c41a;
+  .action-btn {
+    padding: 4px 8px;
+    height: auto;
+    font-size: 12px;
     
-    &:hover {
-      color: #73d13d;
+    &.detail-btn {
+      color: #52c41a;
+      
+      &:hover {
+        color: #73d13d;
+      }
     }
-  }
-  
-  &.stop-btn {
-    color: #ff4d4f;
     
-    &:hover {
-      color: #ff7875;
+    &.start-btn {
+      color: #52c41a;
+      
+      &:hover {
+        color: #73d13d;
+      }
     }
-  }
-  
-  &.restart-btn {
-    color: #1890ff;
     
-    &:hover {
-      color: #40a9ff;
+    &.stop-btn {
+      color: #ff4d4f;
+      
+      &:hover {
+        color: #ff7875;
+      }
     }
-  }
-  
-  &.pause-btn {
-    color: #fa8c16;
     
-    &:hover {
-      color: #ffa940;
+    &.restart-btn {
+      color: #1890ff;
+      
+      &:hover {
+        color: #40a9ff;
+      }
     }
-  }
-  
-  &.edit-btn {
-    color: #1890ff;
     
-    &:hover {
-      color: #40a9ff;
+    &.edit-btn {
+      color: #1890ff;
+      
+      &:hover {
+        color: #40a9ff;
+      }
     }
-  }
-  
-  &.delete-btn {
-    color: #ff4d4f;
     
-    &:hover {
-      color: #ff7875;
-    }
-  }
-  
-  &.detail-btn {
-    color: #722ed1;
-    
-    &:hover {
-      color: #9254de;
+    &.delete-btn {
+      color: #ff4d4f;
+      
+      &:hover {
+        color: #ff7875;
+      }
     }
   }
 }
+
 
 // 表格样式优化
 ::ng-deep .ant-table-thead > tr > th {

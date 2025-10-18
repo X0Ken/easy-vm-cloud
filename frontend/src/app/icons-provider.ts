@@ -53,7 +53,9 @@ import {
   CiOutline,
   // 扩容相关图标
   ExpandOutline,
-  CopyOutline
+  CopyOutline,
+  // 更多操作图标
+  MoreOutline
 } from '@ant-design/icons-angular/icons';
 
 export const icons = [
@@ -111,5 +113,7 @@ export const icons = [
   CiOutline,
   // 扩容相关图标
   ExpandOutline,
-  CopyOutline
+  CopyOutline,
+  // 更多操作图标
+  MoreOutline
 ];

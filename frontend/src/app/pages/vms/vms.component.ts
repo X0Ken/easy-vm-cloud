@@ -15,6 +15,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzEmptyModule } from 'ng-zorro-antd/empty';
+import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { FormsModule } from '@angular/forms';
 import { VmService, VM, Node, CreateVMRequest, UpdateVMRequest, PaginatedResponse } from '../../services/vm.service';
 import { StorageService } from '../../services/storage.service';
@@ -42,6 +43,7 @@ import { Subject } from 'rxjs';
     NzSwitchModule,
     NzPopconfirmModule,
     NzEmptyModule,
+    NzDropDownModule,
     FormsModule
   ],
   templateUrl: './vms.component.html',

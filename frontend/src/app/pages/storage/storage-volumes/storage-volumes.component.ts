@@ -14,6 +14,7 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzDescriptionsModule } from 'ng-zorro-antd/descriptions';
+import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { FormsModule } from '@angular/forms';
 import { StorageService, StorageVolume, StoragePool, Node, CreateStorageVolumeRequest, UpdateStorageVolumeRequest, PaginatedResponse } from '../../../services/storage.service';
 
@@ -35,6 +36,7 @@ import { StorageService, StorageVolume, StoragePool, Node, CreateStorageVolumeRe
     NzInputNumberModule,
     NzPopconfirmModule,
     NzDescriptionsModule,
+    NzDropDownModule,
     FormsModule
   ],
   templateUrl: './storage-volumes.component.html',
@@ -283,16 +285,19 @@ export class StorageVolumesComponent implements OnInit {
   }
 
   deleteVolume(volume: StorageVolume): void {
-    this.storageService.deleteStorageVolume(volume.id).subscribe({
-      next: () => {
-        this.message.success('存储卷删除成功');
-        this.loadStorageVolumes(this.pagination.current_page);
-      },
-      error: (error) => {
-        console.error('删除存储卷失败:', error);
-        this.message.error('删除存储卷失败');
-      }
-    });
+    // 使用浏览器原生确认对话框
+    if (confirm(`确定要删除存储卷 "${volume.name}" 吗？此操作不可撤销。`)) {
+      this.storageService.deleteStorageVolume(volume.id).subscribe({
+        next: () => {
+          this.message.success('存储卷删除成功');
+          this.loadStorageVolumes(this.pagination.current_page);
+        },
+        error: (error) => {
+          console.error('删除存储卷失败:', error);
+          this.message.error('删除存储卷失败');
+        }
+      });
+    }
   }
 
   resetVolumeForm(): void {
