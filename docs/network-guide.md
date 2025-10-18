@@ -2,14 +2,14 @@
 
 ## 概述
 
-Easy VM Cloud 的网络管理系统基于 Linux Bridge + VLAN 实现网络隔离，支持多租户环境下的网络分段。
+Easy VM Cloud 的网络管理系统基于 Linux Bridge 实现网络隔离，支持 VLAN 和无 VLAN 两种网络模式，满足不同场景的网络需求。
 
 ## 架构设计
 
 ### 网络模型
 
 - **网络类型**：支持 Linux Bridge（当前实现）和 Open vSwitch（计划支持）
-- **网络隔离**：使用 VLAN 进行二层网络隔离
+- **网络隔离**：支持 VLAN 和无 VLAN 两种模式
 - **IP 地址管理（IPAM）**：内置简单的 IP 池管理，支持自动分配和释放
 
 ### Linux Bridge + VLAN 模式
@@ -21,7 +21,16 @@ Easy VM Cloud 的网络管理系统基于 Linux Bridge + VLAN 实现网络隔离
 3. **Bridge**：为每个 VLAN 创建一个 Bridge（例如：`br-vlan100`）
 4. **VM 接口**：VM 的虚拟网口（tap 设备）连接到对应的 Bridge
 
-#### 示例拓扑
+### Linux Bridge 无 VLAN 模式
+
+当用户不指定 VLAN ID 时，系统将创建无 VLAN 的网络，直接使用 Provider 接口：
+
+1. **Provider 接口**：物理网卡（例如：`eth0`）作为上行接口
+2. **Bridge**：创建一个默认 Bridge（例如：`br-default`）
+3. **直接连接**：Provider 接口直接连接到 Bridge
+4. **VM 接口**：VM 的虚拟网口（tap 设备）连接到 Bridge
+
+#### VLAN 模式拓扑图
 
 ```
              ┌───────────────────────────┐
@@ -51,6 +60,33 @@ Easy VM Cloud 的网络管理系统基于 Linux Bridge + VLAN 实现网络隔离
  │ VM tap1    │   │ VM tap2    │   │ VM tap3    │
  │ (Guest NIC)│   │ (Guest NIC)│   │ (Guest NIC)│
  └────────────┘   └────────────┘   └────────────┘
+
+```
+
+#### 无 VLAN 模式拓扑图
+
+```
+             ┌───────────────────────────┐
+             │      物理网络（上联交换机） │
+             └───────────┬───────────────┘
+                         │
+                 ┌───────▼─────────┐
+                 │ eth0 (Provider) │
+                 └───────┬─────────┘
+                         │
+                         ▼
+                 ┌────────────┐
+                 │ br-default │
+                 │ (Bridge)   │
+                 └─────┬──────┘
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+        ▼              ▼              ▼
+ ┌────────────┐ ┌────────────┐ ┌────────────┐
+ │ VM tap1    │ │ VM tap2    │ │ VM tap3    │
+ │ (Guest NIC)│ │ (Guest NIC)│ │ (Guest NIC)│
+ └────────────┘ └────────────┘ └────────────┘
 
 ```
 
@@ -98,11 +134,22 @@ sudo ip link set br-vlan100 up
 sudo ip link set eth0.100 up
 ```
 
+## 使用场景
+
+### VLAN 模式适用场景
+- 多租户环境，需要网络隔离
+- 企业级部署，需要 VLAN 分段
+- 与现有网络基础设施集成
+
+### 无 VLAN 模式适用场景
+- 单租户环境，不需要网络隔离
+- 开发测试环境，简化网络配置
+- 与不支持 VLAN 的网络设备集成
+
 ## 未来计划
 
 - [ ] 支持 Open vSwitch（OVS）
 - [ ] 支持 VXLAN 网络
-- [ ] 支持无 VLAN 的普通 Bridge
 - [ ] 支持外部 SDN 控制器集成
 - [ ] 支持网络策略和安全组
 - [ ] 支持 DHCP 服务

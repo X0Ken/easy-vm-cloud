@@ -65,6 +65,61 @@ impl LinuxBridge {
         Ok(())
     }
 
+    /// 创建无 VLAN 网络
+    /// 
+    /// 步骤：
+    /// 1. 检查并创建 Bridge（例如：br-default）
+    /// 2. 将 Provider 接口直接添加到 Bridge
+    /// 3. 确保 Bridge 和 Provider 接口处于 UP 状态
+    pub async fn create_no_vlan_network(&self, bridge_name: &str) -> Result<()> {
+        info!("创建无 VLAN 网络，Bridge: {}", bridge_name);
+
+        // 1. 检查 Bridge 是否存在
+        if !self.bridge_exists(bridge_name).await {
+            info!("创建 Bridge: {}", bridge_name);
+            self.create_bridge(bridge_name)?;
+        } else {
+            info!("Bridge {} 已存在", bridge_name);
+        }
+
+        // 2. 将 Provider 接口添加到 Bridge
+        if !self.interface_in_bridge(bridge_name, &self.provider_interface)? {
+            info!("将 {} 添加到 Bridge {}", self.provider_interface, bridge_name);
+            self.add_interface_to_bridge(bridge_name, &self.provider_interface)?;
+        } else {
+            info!("接口 {} 已在 Bridge {} 中", self.provider_interface, bridge_name);
+        }
+
+        // 3. 确保 Bridge 和 Provider 接口处于 UP 状态
+        self.set_interface_up(&self.provider_interface)?;
+        self.set_interface_up(bridge_name)?;
+
+        info!("无 VLAN 网络创建成功");
+        Ok(())
+    }
+
+    /// 删除无 VLAN 网络
+    pub async fn delete_no_vlan_network(&self, bridge_name: &str) -> Result<()> {
+        info!("删除无 VLAN 网络，Bridge: {}", bridge_name);
+
+        // 1. 从 Bridge 中移除 Provider 接口
+        if self.interface_in_bridge(bridge_name, &self.provider_interface)? {
+            info!("从 Bridge {} 移除接口 {}", bridge_name, self.provider_interface);
+            self.remove_interface_from_bridge(bridge_name, &self.provider_interface)?;
+        }
+
+        // 2. 删除 Bridge（如果没有其他接口）
+        if self.bridge_is_empty(bridge_name)? {
+            info!("删除空 Bridge: {}", bridge_name);
+            self.delete_bridge(bridge_name)?;
+        } else {
+            info!("Bridge {} 仍有其他接口，保留", bridge_name);
+        }
+
+        info!("无 VLAN 网络删除成功");
+        Ok(())
+    }
+
     /// 删除 VLAN 网络
     pub async fn delete_vlan_network(&self, vlan_id: u32, bridge_name: &str) -> Result<()> {
         info!("删除 VLAN {} 网络，Bridge: {}", vlan_id, bridge_name);

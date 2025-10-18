@@ -126,7 +126,10 @@ impl VmService {
                     mac_address: Some(mac_address.clone()),
                     ip_address: Some(ip_allocation.ip_address.clone()),
                     model: network_spec.model.clone(),
-                    bridge_name: Some(format!("br-vlan{}", network.vlan_id.unwrap_or(0))),
+                    bridge_name: Some(match network.vlan_id {
+                        Some(vlan_id) => format!("br-vlan{}", vlan_id),
+                        None => "br-default".to_string(),
+                    }),
                 };
                 
                 network_interfaces_with_ip.push(network_with_ip);

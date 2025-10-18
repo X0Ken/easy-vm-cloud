@@ -35,9 +35,8 @@ impl NetworkManager {
                     // 创建 VLAN 网络
                     self.bridge.create_vlan_network(vlan, bridge_name).await?;
                 } else {
-                    // 创建默认 Bridge（无 VLAN）
-                    warn!("创建无 VLAN 的网络，暂不支持");
-                    return Err(common::Error::Internal("暂不支持无 VLAN 的网络".to_string()));
+                    // 创建无 VLAN 网络
+                    self.bridge.create_no_vlan_network(bridge_name).await?;
                 }
             }
             "ovs" => {
@@ -63,7 +62,7 @@ impl NetworkManager {
         if let Some(vlan) = vlan_id {
             self.bridge.delete_vlan_network(vlan, bridge_name).await?;
         } else {
-            warn!("删除无 VLAN 的网络，暂不支持");
+            self.bridge.delete_no_vlan_network(bridge_name).await?;
         }
 
         Ok(())

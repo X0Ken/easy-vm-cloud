@@ -928,18 +928,29 @@ impl RpcHandlerRegistry {
                     bridge_name,
                     Some(vlan),
                 ).await {
-                    error!("自动创建网络失败: {}", e);
+                    error!("自动创建 VLAN 网络失败: {}", e);
                     return Err(RpcError::new(
                         RpcErrorCode::NetworkError,
-                        format!("自动创建网络失败: {}", e),
+                        format!("自动创建 VLAN 网络失败: {}", e),
                     ));
                 }
-                info!("成功自动创建网络: network_id={}, bridge={}, vlan={}", network_id, bridge_name, vlan);
+                info!("成功自动创建 VLAN 网络: network_id={}, bridge={}, vlan={}", network_id, bridge_name, vlan);
             } else {
-                return Err(RpcError::new(
-                    RpcErrorCode::NetworkError,
-                    format!("无法从 Bridge 名称推断 VLAN ID: {}，期望格式: br-vlan<数字>", bridge_name),
-                ));
+                // 自动创建无 VLAN 网络（直接使用 Provider 接口）
+                if let Err(e) = self.network.create_network(
+                    network_id,
+                    &format!("auto-created-{}", network_id),
+                    "bridge",
+                    bridge_name,
+                    None,
+                ).await {
+                    error!("自动创建无 VLAN 网络失败: {}", e);
+                    return Err(RpcError::new(
+                        RpcErrorCode::NetworkError,
+                        format!("自动创建无 VLAN 网络失败: {}", e),
+                    ));
+                }
+                info!("成功自动创建无 VLAN 网络: network_id={}, bridge={}", network_id, bridge_name);
             }
         }
         
