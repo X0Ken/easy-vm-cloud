@@ -91,6 +91,10 @@
                   <span nz-icon nzType="copy"></span>
                   克隆
                 </button>
+                <button nz-button nzType="link" nzSize="small" (click)="showResizeVolumeModal(volume)" class="action-btn resize-btn">
+                  <span nz-icon nzType="expand"></span>
+                  扩容
+                </button>
                 <button 
                   nz-button 
                   nzType="link" 
@@ -310,6 +314,67 @@
           <div class="form-help-text">
             <small>克隆将在同一存储池内创建</small>
           </div>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </div>
+</nz-modal>
+
+<!-- 扩容存储卷模态框 -->
+<nz-modal
+  [(nzVisible)]="isResizeModalVisible"
+  nzTitle="扩容存储卷"
+  [nzWidth]="500"
+  (nzOnCancel)="handleResizeCancel()"
+  (nzOnOk)="handleResizeOk()"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">存储卷名称</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            [value]="resizeVolume?.name || ''"
+            disabled
+          />
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">当前大小</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            [value]="formatSize(resizeVolume?.size_gb || 0)"
+            disabled
+          />
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">新大小 (GB)</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-input-number 
+            [(ngModel)]="resizeFormData.newSizeGb"
+            name="newSizeGb"
+            [nzMin]="(resizeVolume?.size_gb || 0) + 1"
+            [nzMax]="10000"
+            [nzStep]="1"
+            nzPlaceHolder="请输入新的存储卷大小"
+            style="width: 100%"
+          ></nz-input-number>
+          <div class="form-help-text">
+            <small>新大小必须大于当前大小 ({{ formatSize(resizeVolume?.size_gb || 0) }})</small>
+          </div>
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">存储池</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input 
+            nz-input 
+            [value]="resizeVolume?.pool_name || 'Unknown'"
+            disabled
+          />
         </nz-form-control>
       </nz-form-item>
     </form>

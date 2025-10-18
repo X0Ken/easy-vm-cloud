@@ -264,7 +264,7 @@ export class StorageService {
   // 扩容存储卷
   resizeVolume(id: number, newSizeGb: number): Observable<StorageVolume> {
     return this.http.post<StorageVolume>(this.apiConfig.buildUrl(`/storage/volumes/${id}/resize`), {
-      size_gb: newSizeGb
+      new_size_gb: newSizeGb
     });
   }
 

@@ -48,10 +48,12 @@ export class StorageVolumesComponent implements OnInit {
   isModalVisible = false;
   isDetailModalVisible = false;
   isCloneModalVisible = false;
+  isResizeModalVisible = false;
   isEditMode = false;
   currentVolume: StorageVolume | null = null;
   selectedVolume: StorageVolume | null = null;
   cloneSourceVolume: StorageVolume | null = null;
+  resizeVolume: StorageVolume | null = null;
   
   // 加载状态标志
   volumesLoaded = false;
@@ -81,6 +83,11 @@ export class StorageVolumesComponent implements OnInit {
   // 克隆表单数据
   cloneFormData = {
     targetName: ''
+  };
+
+  // 扩容表单数据
+  resizeFormData = {
+    newSizeGb: 0
   };
 
   constructor(
@@ -367,5 +374,48 @@ export class StorageVolumesComponent implements OnInit {
     this.isCloneModalVisible = false;
     this.cloneSourceVolume = null;
     this.cloneFormData = { targetName: '' };
+  }
+
+  // 显示扩容存储卷模态框
+  showResizeVolumeModal(volume: StorageVolume): void {
+    this.resizeVolume = volume;
+    this.resizeFormData = {
+      newSizeGb: volume.size_gb
+    };
+    this.isResizeModalVisible = true;
+  }
+
+  // 处理扩容确认
+  handleResizeOk(): void {
+    if (!this.resizeVolume || this.resizeFormData.newSizeGb <= this.resizeVolume.size_gb) {
+      this.message.error('新大小必须大于当前大小');
+      return;
+    }
+
+    this.loading = true;
+    this.storageService.resizeVolume(
+      this.resizeVolume.id,
+      this.resizeFormData.newSizeGb
+    ).subscribe({
+      next: (resizedVolume: StorageVolume) => {
+        this.message.success('存储卷扩容成功');
+        this.isResizeModalVisible = false;
+        this.resizeVolume = null;
+        this.resizeFormData = { newSizeGb: 0 };
+        this.loadStorageVolumes(this.pagination.current_page);
+      },
+      error: (error) => {
+        this.loading = false;
+        console.error('扩容存储卷失败:', error);
+        this.message.error('扩容存储卷失败: ' + (error.error?.message || error.message || '未知错误'));
+      }
+    });
+  }
+
+  // 处理扩容取消
+  handleResizeCancel(): void {
+    this.isResizeModalVisible = false;
+    this.resizeVolume = null;
+    this.resizeFormData = { newSizeGb: 0 };
   }
 }

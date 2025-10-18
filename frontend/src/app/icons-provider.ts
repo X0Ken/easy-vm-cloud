@@ -50,7 +50,10 @@ import {
   FireOutline,
   BulbOutline,
   // CPU 图标
-  CiOutline
+  CiOutline,
+  // 扩容相关图标
+  ExpandOutline,
+  CopyOutline
 } from '@ant-design/icons-angular/icons';
 
 export const icons = [
@@ -105,5 +108,8 @@ export const icons = [
   FireOutline,
   BulbOutline,
   // CPU 图标
-  CiOutline
+  CiOutline,
+  // 扩容相关图标
+  ExpandOutline,
+  CopyOutline
 ];
