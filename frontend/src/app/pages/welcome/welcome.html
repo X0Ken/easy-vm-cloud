@@ -1,26 +1,158 @@
 <div class="welcome-container">
   <nz-card>
-    <div class="welcome-content">
-      <h1>欢迎使用管理系统</h1>
-      <p>您已成功登录系统</p>
-      <div class="action-buttons">
-        <button nz-button nzType="primary" routerLink="/users">
-          <span nz-icon nzType="team"></span>
-          用户管理
-        </button>
-        <button nz-button nzType="primary" routerLink="/roles">
-          <span nz-icon nzType="safety"></span>
-          角色管理
-        </button>
-        <button nz-button nzType="primary" routerLink="/permissions">
-          <span nz-icon nzType="safety-certificate"></span>
-          权限管理
-        </button>
-        <button nz-button nzType="default" (click)="logout()">
-          <span nz-icon nzType="logout"></span>
-          退出登录
-        </button>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <h2>欢迎使用 Easy VM Cloud</h2>
+        <p>现代化的虚拟机管理平台</p>
       </div>
     </div>
+
+    <!-- 统计概览区域 -->
+    <nz-card nzTitle="平台概览" class="overview-section">
+      <div class="stats-grid">
+        <nz-card class="stat-card" [nzLoading]="loading">
+          <div class="stat-content">
+            <div class="stat-icon vm-icon">
+              <span nz-icon nzType="desktop"></span>
+            </div>
+            <div class="stat-info">
+              <div class="stat-number">{{ stats.totalVms }}</div>
+              <div class="stat-label">虚拟机总数</div>
+              <div class="stat-detail">
+                <span class="running">{{ stats.runningVms }} 运行中</span>
+                <span class="stopped">{{ stats.stoppedVms }} 已停止</span>
+              </div>
+            </div>
+          </div>
+        </nz-card>
+
+        <nz-card class="stat-card" [nzLoading]="loading">
+          <div class="stat-content">
+            <div class="stat-icon node-icon">
+              <span nz-icon nzType="cluster"></span>
+            </div>
+            <div class="stat-info">
+              <div class="stat-number">{{ stats.totalNodes }}</div>
+              <div class="stat-label">节点总数</div>
+              <div class="stat-detail">
+                <span class="online">{{ stats.onlineNodes }} 在线</span>
+                <span class="offline">{{ stats.offlineNodes }} 离线</span>
+              </div>
+            </div>
+          </div>
+        </nz-card>
+
+        <nz-card class="stat-card" [nzLoading]="loading">
+          <div class="stat-content">
+            <div class="stat-icon storage-icon">
+              <span nz-icon nzType="database"></span>
+            </div>
+            <div class="stat-info">
+              <div class="stat-number">{{ stats.totalStorage | number:'1.0-1' }}GB</div>
+              <div class="stat-label">存储总量</div>
+              <div class="stat-detail">
+                <span class="used">{{ stats.usedStorage | number:'1.0-1' }}GB 已使用</span>
+                <span class="available">{{ stats.availableStorage | number:'1.0-1' }}GB 可用</span>
+              </div>
+            </div>
+          </div>
+        </nz-card>
+
+        <nz-card class="stat-card" [nzLoading]="loading">
+          <div class="stat-content">
+            <div class="stat-icon network-icon">
+              <span nz-icon nzType="wifi"></span>
+            </div>
+            <div class="stat-info">
+              <div class="stat-number">{{ stats.totalNetworks }}</div>
+              <div class="stat-label">网络总数</div>
+              <div class="stat-detail">
+                <span class="active">{{ stats.activeNetworks }} 活跃</span>
+                <span class="inactive">{{ stats.inactiveNetworks }} 非活跃</span>
+              </div>
+            </div>
+          </div>
+        </nz-card>
+      </div>
+    </nz-card>
+
+    <!-- 快捷操作区域 -->
+    <nz-card nzTitle="快捷操作" class="actions-section">
+      <div class="action-grid">
+        <div class="action-card" nzHoverable routerLink="/vms">
+          <div class="action-content">
+            <div class="action-icon">
+              <span nz-icon nzType="desktop"></span>
+            </div>
+            <div class="action-text">
+              <h3>虚拟机管理</h3>
+              <p>管理系统中的所有虚拟机</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-card" nzHoverable routerLink="/nodes">
+          <div class="action-content">
+            <div class="action-icon">
+              <span nz-icon nzType="cluster"></span>
+            </div>
+            <div class="action-text">
+              <h3>节点管理</h3>
+              <p>管理物理节点和资源</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-card" nzHoverable routerLink="/storage">
+          <div class="action-content">
+            <div class="action-icon">
+              <span nz-icon nzType="database"></span>
+            </div>
+            <div class="action-text">
+              <h3>存储管理</h3>
+              <p>管理存储池和卷</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-card" nzHoverable routerLink="/network">
+          <div class="action-content">
+            <div class="action-icon">
+              <span nz-icon nzType="wifi"></span>
+            </div>
+            <div class="action-text">
+              <h3>网络管理</h3>
+              <p>配置网络和IP分配</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-card" nzHoverable routerLink="/permissions/users">
+          <div class="action-content">
+            <div class="action-icon">
+              <span nz-icon nzType="team"></span>
+            </div>
+            <div class="action-text">
+              <h3>用户管理</h3>
+              <p>管理系统用户和权限</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-card" nzHoverable routerLink="/system/settings">
+          <div class="action-content">
+            <div class="action-icon">
+              <span nz-icon nzType="setting"></span>
+            </div>
+            <div class="action-text">
+              <h3>系统设置</h3>
+              <p>配置系统参数和监控</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nz-card>
+
   </nz-card>
 </div>
