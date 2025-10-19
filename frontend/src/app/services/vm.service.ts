@@ -14,6 +14,7 @@ export interface VM {
   status: 'running' | 'stopped' | 'stopping' | 'paused' | 'error';
   vcpu: number;
   memory_mb: number;
+  os_type: string; // 操作系统类型
   disk_size_gb: number;
   created_at: string;
   updated_at: string;
@@ -41,6 +42,7 @@ export interface CreateVMRequest {
   node_id: string; // 后端期望字符串类型
   vcpu: number;
   memory_mb: number;
+  os_type?: string; // 操作系统类型: linux, windows
   disks?: DiskSpec[];
   networks?: NetworkInterfaceSpec[];
 }
@@ -111,6 +113,7 @@ export class VmService {
       status: vm.status,
       vcpu: vm.vcpu,
       memory_mb: vm.memory_mb,
+      os_type: vm.os_type || 'linux', // 默认操作系统类型
       disk_size_gb: 0, // 后端没有提供磁盘大小，使用默认值
       created_at: vm.created_at,
       updated_at: vm.updated_at

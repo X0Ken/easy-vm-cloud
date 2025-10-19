@@ -64,6 +64,7 @@ pub struct CreateVmRequest {
     pub name: String,
     pub vcpu: u32,
     pub memory_mb: u64,
+    pub os_type: Option<String>,  // 操作系统类型: linux, windows
     pub disks: Vec<DiskSpec>,
     pub networks: Vec<NetworkInterfaceSpec>,
     #[serde(default)]

@@ -145,6 +145,13 @@ pub async fn create_vm(
         return Err(ApiError::BadRequest("内存大小必须大于 0".to_string()));
     }
 
+    // 验证操作系统类型
+    if let Some(ref os_type) = dto.os_type {
+        if os_type != "linux" && os_type != "windows" {
+            return Err(ApiError::BadRequest("操作系统类型必须是 'linux' 或 'windows'".to_string()));
+        }
+    }
+
     let service = VmService::new(state.clone());
     let result = service.create_vm(dto).await?;
 

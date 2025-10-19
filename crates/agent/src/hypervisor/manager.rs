@@ -80,25 +80,55 @@ impl HypervisorManager {
         writeln!(xml, "  <currentMemory unit='MiB'>{}</currentMemory>", config.memory_mb).unwrap();
         writeln!(xml, "  <vcpu placement='static'>{}</vcpu>", config.vcpu).unwrap();
         
-        // CPU 配置
-        writeln!(xml, "  <cpu mode='host-passthrough' check='none'/>").unwrap();
+        // CPU 配置 - 根据操作系统类型优化
+        if config.os_type == "windows" {
+            // Windows 优化：使用 host-model 模式，启用更多特性
+            writeln!(xml, "  <cpu mode='host-model' check='partial'>").unwrap();
+            writeln!(xml, "    <topology sockets='1' dies='1' cores='{}' threads='1'/>", config.vcpu).unwrap();
+            writeln!(xml, "    <feature policy='require' name='vmx'/>").unwrap();
+            writeln!(xml, "    <feature policy='require' name='svm'/>").unwrap();
+            writeln!(xml, "  </cpu>").unwrap();
+        } else {
+            // Linux 默认配置
+            writeln!(xml, "  <cpu mode='host-passthrough' check='none'/>").unwrap();
+        }
         
         // 操作系统配置
         writeln!(xml, "  <os>").unwrap();
         writeln!(xml, "    <type arch='x86_64' machine='pc-q35-7.2'>hvm</type>").unwrap();
         writeln!(xml, "  </os>").unwrap();
         
-        // 特性
+        // 特性 - 根据操作系统类型优化
         writeln!(xml, "  <features>").unwrap();
         writeln!(xml, "    <acpi/>").unwrap();
         writeln!(xml, "    <apic/>").unwrap();
+        if config.os_type == "windows" {
+            // Windows 优化特性
+            writeln!(xml, "    <hyperv mode='custom'>").unwrap();
+            writeln!(xml, "      <relaxed state='on'/>").unwrap();
+            writeln!(xml, "      <vapic state='on'/>").unwrap();
+            writeln!(xml, "      <spinlocks state='on' retries='8191'/>").unwrap();
+            writeln!(xml, "      <vendor_id state='on' value='Microsoft Hv'/>").unwrap();
+            writeln!(xml, "    </hyperv>").unwrap();
+            writeln!(xml, "    <vmport state='off'/>").unwrap();
+        }
         writeln!(xml, "  </features>").unwrap();
         
-        // 时钟
-        writeln!(xml, "  <clock offset='utc'>").unwrap();
-        writeln!(xml, "    <timer name='rtc' tickpolicy='catchup'/>").unwrap();
-        writeln!(xml, "    <timer name='pit' tickpolicy='delay'/>").unwrap();
-        writeln!(xml, "    <timer name='hpet' present='no'/>").unwrap();
+        // 时钟 - 根据操作系统类型优化
+        if config.os_type == "windows" {
+            // Windows 优化时钟配置
+            writeln!(xml, "  <clock offset='localtime'>").unwrap();
+            writeln!(xml, "    <timer name='rtc' tickpolicy='catchup'/>").unwrap();
+            writeln!(xml, "    <timer name='pit' tickpolicy='delay'/>").unwrap();
+            writeln!(xml, "    <timer name='hpet' present='no'/>").unwrap();
+            writeln!(xml, "    <timer name='hypervclock' present='yes'/>").unwrap();
+        } else {
+            // Linux 默认时钟配置
+            writeln!(xml, "  <clock offset='utc'>").unwrap();
+            writeln!(xml, "    <timer name='rtc' tickpolicy='catchup'/>").unwrap();
+            writeln!(xml, "    <timer name='pit' tickpolicy='delay'/>").unwrap();
+            writeln!(xml, "    <timer name='hpet' present='no'/>").unwrap();
+        }
         writeln!(xml, "  </clock>").unwrap();
         
         // 电源管理
@@ -112,10 +142,17 @@ impl HypervisorManager {
         // 模拟器
         writeln!(xml, "    <emulator>/usr/bin/qemu-system-x86_64</emulator>").unwrap();
         
-        // 磁盘
+        // 磁盘 - 根据操作系统类型优化
         for (idx, disk) in config.disks.iter().enumerate() {
             writeln!(xml, "    <disk type='file' device='disk'>").unwrap();
-            writeln!(xml, "      <driver name='qemu' type='qcow2' cache='writeback'/>").unwrap();
+            
+            // Windows 优化磁盘配置
+            if config.os_type == "windows" {
+                writeln!(xml, "      <driver name='qemu' type='qcow2' cache='directsync' io='native'/>").unwrap();
+            } else {
+                writeln!(xml, "      <driver name='qemu' type='qcow2' cache='writeback'/>").unwrap();
+            }
+            
             writeln!(xml, "      <source file='{}'/>", disk.volume_path).unwrap();
             
             let device_name = if disk.device.is_empty() {
@@ -133,7 +170,7 @@ impl HypervisorManager {
             writeln!(xml, "    </disk>").unwrap();
         }
         
-        // 网络接口
+        // 网络接口 - 根据操作系统类型优化
         for network in &config.networks {
             // 使用 Bridge 类型直接连接到 Linux Bridge
             writeln!(xml, "    <interface type='bridge'>").unwrap();
@@ -151,12 +188,22 @@ impl HypervisorManager {
             writeln!(xml, "      <source bridge='{}'/>", bridge).unwrap();
             
             let model = if network.model.is_empty() {
-                "virtio"
+                if config.os_type == "windows" {
+                    "e1000"  // Windows 优化：使用 e1000 网卡
+                } else {
+                    "virtio"  // Linux 默认：使用 virtio 网卡
+                }
             } else {
                 &network.model
             };
             
             writeln!(xml, "      <model type='{}'/>", model).unwrap();
+            
+            // Windows 网络优化
+            if config.os_type == "windows" {
+                writeln!(xml, "      <driver name='qemu'/>").unwrap();
+            }
+            
             writeln!(xml, "    </interface>").unwrap();
         }
         
@@ -171,22 +218,35 @@ impl HypervisorManager {
         writeln!(xml, "      <target type='serial' port='0'/>").unwrap();
         writeln!(xml, "    </console>").unwrap();
         
-        // VGA 图形
+        // VGA 图形 - 根据操作系统类型优化
         writeln!(xml, "    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'>").unwrap();
         writeln!(xml, "      <listen type='address' address='0.0.0.0'/>").unwrap();
         writeln!(xml, "    </graphics>").unwrap();
         
         writeln!(xml, "    <video>").unwrap();
-        writeln!(xml, "      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>").unwrap();
+        if config.os_type == "windows" {
+            // Windows 优化：使用 cirrus 显卡，更好的兼容性
+            writeln!(xml, "      <model type='cirrus' vram='16384' heads='1' primary='yes'/>").unwrap();
+        } else {
+            // Linux 默认：使用 qxl 显卡
+            writeln!(xml, "      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>").unwrap();
+        }
         writeln!(xml, "    </video>").unwrap();
         
-        // 输入设备
-        writeln!(xml, "    <input type='tablet' bus='usb'>").unwrap();
-        writeln!(xml, "      <address type='usb' bus='0' port='1'/>").unwrap();
-        writeln!(xml, "    </input>").unwrap();
-        
-        writeln!(xml, "    <input type='mouse' bus='ps2'/>").unwrap();
-        writeln!(xml, "    <input type='keyboard' bus='ps2'/>").unwrap();
+        // 输入设备 - 根据操作系统类型优化
+        if config.os_type == "windows" {
+            // Windows 优化：使用 PS/2 设备，更好的兼容性
+            writeln!(xml, "    <input type='mouse' bus='ps2'/>").unwrap();
+            writeln!(xml, "    <input type='keyboard' bus='ps2'/>").unwrap();
+        } else {
+            // Linux 默认：使用 USB 设备
+            writeln!(xml, "    <input type='tablet' bus='usb'>").unwrap();
+            writeln!(xml, "      <address type='usb' bus='0' port='1'/>").unwrap();
+            writeln!(xml, "    </input>").unwrap();
+            
+            writeln!(xml, "    <input type='mouse' bus='ps2'/>").unwrap();
+            writeln!(xml, "    <input type='keyboard' bus='ps2'/>").unwrap();
+        }
         
         writeln!(xml, "  </devices>").unwrap();
         writeln!(xml, "</domain>").unwrap();
@@ -427,6 +487,7 @@ pub struct VMConfig {
     pub uuid: String,  // 使用传入的 UUID
     pub vcpu: u32,
     pub memory_mb: u64,
+    pub os_type: String,  // 操作系统类型: linux, windows
     pub disks: Vec<DiskConfig>,
     pub networks: Vec<NetworkConfig>,
 }

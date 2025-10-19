@@ -18,6 +18,7 @@ pub struct Model {
     // 配置信息
     pub vcpu: i32,
     pub memory_mb: i64,
+    pub os_type: String,  // 操作系统类型: linux, windows
     
     // 磁盘和网络配置 (JSON)
     pub disk_ids: Option<JsonValue>,
@@ -52,6 +53,7 @@ pub enum VmStatus {
     Error,
 }
 
+
 impl VmStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -84,6 +86,7 @@ pub struct CreateVmDto {
     pub node_id: String,
     pub vcpu: u32,
     pub memory_mb: u64,
+    pub os_type: Option<String>,  // 操作系统类型，默认为 linux
     pub disks: Option<Vec<DiskSpec>>,
     pub networks: Option<Vec<NetworkInterfaceSpec>>,
     pub metadata: Option<JsonValue>,
@@ -95,6 +98,7 @@ pub struct UpdateVmDto {
     pub name: Option<String>,
     pub vcpu: Option<u32>,
     pub memory_mb: Option<u64>,
+    pub os_type: Option<String>,  // 操作系统类型
     pub disks: Option<Vec<DiskSpec>>,
     pub networks: Option<Vec<NetworkInterfaceSpec>>,
     pub metadata: Option<JsonValue>,
@@ -111,6 +115,7 @@ pub struct VmResponse {
     pub status: String,
     pub vcpu: i32,
     pub memory_mb: i64,
+    pub os_type: String,  // 操作系统类型
     pub disk_ids: Option<JsonValue>,
     pub network_interfaces: Option<JsonValue>,
     pub metadata: Option<JsonValue>,
@@ -131,6 +136,7 @@ impl From<Vm> for VmResponse {
             status: vm.status,
             vcpu: vm.vcpu,
             memory_mb: vm.memory_mb,
+            os_type: vm.os_type,
             disk_ids: vm.disk_ids,
             network_interfaces: vm.network_interfaces,
             metadata: vm.metadata,

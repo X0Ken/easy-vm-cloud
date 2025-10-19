@@ -33,6 +33,7 @@
             <th>名称</th>
             <th>状态</th>
             <th>节点</th>
+            <th>操作系统</th>
             <th>CPU</th>
             <th>内存</th>
             <th>创建时间</th>
@@ -58,6 +59,11 @@
                 <br>
                 <small class="node-id">ID: {{ vm.node_id }}</small>
               </div>
+            </td>
+            <td>
+              <nz-tag [nzColor]="vm.os_type === 'windows' ? 'blue' : 'green'">
+                {{ vm.os_type === 'windows' ? 'Windows' : 'Linux' }}
+              </nz-tag>
             </td>
             <td>
               <span class="resource-info">{{ vm.vcpu }} 核</span>
@@ -219,6 +225,21 @@
         </nz-form-control>
       </nz-form-item>
 
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">操作系统类型</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            nzPlaceHolder="请选择操作系统类型" 
+            [(ngModel)]="formData.os_type"
+            name="os_type"
+            nzAllowClear
+          >
+            <nz-option nzValue="linux" nzLabel="Linux"></nz-option>
+            <nz-option nzValue="windows" nzLabel="Windows"></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
       <nz-form-item *ngIf="!isEditMode">
         <nz-form-label [nzSpan]="6">选择存储卷</nz-form-label>
         <nz-form-control [nzSpan]="18">
@@ -278,10 +299,8 @@
               <span>{{ selectedVm.name }}</span>
             </div>
             <div class="detail-item">
-              <label>状态:</label>
-              <nz-tag [nzColor]="getStatusColor(selectedVm.status)">
-                {{ getStatusText(selectedVm.status) }}
-              </nz-tag>
+              <label>虚拟机ID:</label>
+              <span>{{ selectedVm.id }}</span>
             </div>
           </div>
           
@@ -293,6 +312,21 @@
             <div class="detail-item">
               <label>内存大小:</label>
               <span>{{ formatMemory(selectedVm.memory_mb) }}</span>
+            </div>
+          </div>
+          
+          <div class="detail-row">
+            <div class="detail-item">
+              <label>操作系统:</label>
+              <nz-tag [nzColor]="selectedVm.os_type === 'windows' ? 'blue' : 'green'">
+                {{ selectedVm.os_type === 'windows' ? 'Windows' : 'Linux' }}
+              </nz-tag>
+            </div>
+            <div class="detail-item">
+              <label>状态:</label>
+              <nz-tag [nzColor]="getStatusColor(selectedVm.status)">
+                {{ getStatusText(selectedVm.status) }}
+              </nz-tag>
             </div>
           </div>
           

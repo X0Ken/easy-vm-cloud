@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS vms (
     -- 配置信息
     vcpu INTEGER NOT NULL,
     memory_mb BIGINT NOT NULL,
+    os_type VARCHAR(20) DEFAULT 'linux',  -- 操作系统类型: linux, windows
     
     -- 磁盘和网络配置 (JSON)
     disk_ids JSONB,
@@ -29,4 +30,5 @@ CREATE INDEX IF NOT EXISTS idx_vms_node_id ON vms(node_id);
 CREATE INDEX IF NOT EXISTS idx_vms_status ON vms(status);
 CREATE INDEX IF NOT EXISTS idx_vms_name ON vms(name);
 CREATE INDEX IF NOT EXISTS idx_vms_uuid ON vms(uuid);
+CREATE INDEX IF NOT EXISTS idx_vms_os_type ON vms(os_type);
 

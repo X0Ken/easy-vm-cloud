@@ -163,6 +163,9 @@ impl VmService {
             None
         };
 
+        // 确定操作系统类型，默认为 linux
+        let os_type = dto.os_type.clone().unwrap_or_else(|| "linux".to_string());
+
         // 创建 ActiveModel
         let vm_active = VmActiveModel {
             id: Set(vm_id.clone()),
@@ -171,6 +174,7 @@ impl VmService {
             status: Set(VmStatus::Stopped.as_str().to_string()),
             vcpu: Set(dto.vcpu as i32),
             memory_mb: Set(dto.memory_mb as i64),
+            os_type: Set(os_type),
             disk_ids: Set(disk_ids_json),
             network_interfaces: Set(network_interfaces_json),
             metadata: Set(dto.metadata.clone()),
@@ -257,6 +261,7 @@ impl VmService {
                 name: dto.name.clone(),
                 vcpu: dto.vcpu,
                 memory_mb: dto.memory_mb,
+                os_type: dto.os_type.clone(),
                 disks: proto_disks,
                 networks: proto_networks,
                 metadata: dto.metadata
@@ -380,6 +385,9 @@ impl VmService {
         }
         if let Some(memory_mb) = dto.memory_mb {
             vm_active.memory_mb = Set(memory_mb as i64);
+        }
+        if let Some(os_type) = dto.os_type {
+            vm_active.os_type = Set(os_type);
         }
         if let Some(disks) = dto.disks {
             let disks_json = serde_json::to_value(disks)?;

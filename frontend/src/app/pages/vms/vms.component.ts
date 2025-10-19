@@ -86,6 +86,7 @@ export class VmsComponent implements OnInit {
     node_id: null as string | null,
     vcpu: 1,
     memory_mb: 1024,
+    os_type: 'linux', // 默认操作系统类型
     selected_volume_id: null as string | null,
     selected_network_id: null as string | null
   };
@@ -292,6 +293,7 @@ export class VmsComponent implements OnInit {
       node_id: vm.node_id,
       vcpu: vm.vcpu,
       memory_mb: vm.memory_mb,
+      os_type: vm.os_type, // 添加操作系统类型
       selected_volume_id: null, // 编辑时不显示存储卷和网络选择
       selected_network_id: null
     };
@@ -331,6 +333,7 @@ export class VmsComponent implements OnInit {
       node_id: this.formData.node_id, // 转换为字符串
       vcpu: this.formData.vcpu,
       memory_mb: this.formData.memory_mb,
+      os_type: this.formData.os_type, // 操作系统类型
       disks: [{
         volume_id: this.formData.selected_volume_id!.toString(), // 存储卷ID转换为字符串
         device: 'vda', // 默认设备名
@@ -340,7 +343,7 @@ export class VmsComponent implements OnInit {
         network_id: this.formData.selected_network_id!.toString(), // 网络ID转换为字符串
         mac_address: null, // 让后端自动分配
         ip_address: null, // 让后端自动分配
-        model: 'virtio', // 默认网络模型
+        model: '', // 让Agent根据操作系统类型自动判断
         bridge_name: null // 让后端自动处理
       }]
     };
@@ -441,6 +444,7 @@ export class VmsComponent implements OnInit {
       node_id: null,
       vcpu: 1,
       memory_mb: 1024,
+      os_type: 'linux', // 默认操作系统类型
       selected_volume_id: null,
       selected_network_id: null
     };

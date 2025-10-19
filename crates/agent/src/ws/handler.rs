@@ -229,6 +229,7 @@ impl RpcHandlerRegistry {
             uuid: req.vm_id.clone(),  // 使用传入的 vm_id 作为 UUID
             vcpu: req.vcpu,
             memory_mb: req.memory_mb,
+            os_type: req.os_type.unwrap_or_else(|| "linux".to_string()),  // 默认操作系统类型
             disks: req.disks.iter().map(|d| crate::hypervisor::DiskConfig {
                 volume_path: d.volume_path.clone(),
                 device: d.device.clone(),
