@@ -12,3 +12,5 @@ pub use manager::{
     VMInfo,
 };
 
+pub use common::ws_rpc::types::{DiskBusType, DiskDeviceType};
+

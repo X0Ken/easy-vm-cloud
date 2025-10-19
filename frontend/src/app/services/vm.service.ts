@@ -20,11 +20,17 @@ export interface VM {
   updated_at: string;
 }
 
+// 磁盘总线类型
+export type DiskBusType = 'virtio' | 'scsi' | 'ide';
+
+// 磁盘设备类型
+export type DiskDeviceType = 'disk' | 'cdrom';
+
 // 磁盘规格
 export interface DiskSpec {
   volume_id: string;
-  device: string;
-  bootable: boolean;
+  bus_type?: DiskBusType;      // 总线类型，默认为 virtio
+  device_type?: DiskDeviceType; // 设备类型，默认为 disk
 }
 
 // 网络接口规格

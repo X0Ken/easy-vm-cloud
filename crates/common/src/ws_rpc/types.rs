@@ -71,12 +71,43 @@ pub struct CreateVmRequest {
     pub metadata: HashMap<String, String>,
 }
 
+/// 磁盘总线类型
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DiskBusType {
+    Virtio,
+    Scsi,
+    Ide,
+}
+
+impl Default for DiskBusType {
+    fn default() -> Self {
+        DiskBusType::Virtio
+    }
+}
+
+/// 磁盘设备类型
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DiskDeviceType {
+    Disk,    // 磁盘
+    Cdrom,   // 虚拟光驱
+}
+
+impl Default for DiskDeviceType {
+    fn default() -> Self {
+        DiskDeviceType::Disk
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiskSpec {
     pub volume_id: String,
-    pub device: String,
-    pub bootable: bool,
+    pub device: String,  // 自动生成的设备名
     pub volume_path: String,
+    pub bus_type: DiskBusType,      // 总线类型: virtio, scsi, ide
+    pub device_type: DiskDeviceType, // 设备类型: disk, cdrom
+    pub format: String,              // 磁盘格式: qcow2, raw, vmdk 等
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

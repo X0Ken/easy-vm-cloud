@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use tokio::sync::mpsc;
 
-use crate::hypervisor::HypervisorManager;
+use crate::hypervisor::{HypervisorManager, DiskBusType, DiskDeviceType};
 use crate::storage::StorageManager;
 use crate::network::NetworkManager;
 use crate::ws::client::WsClient;
@@ -232,8 +232,9 @@ impl RpcHandlerRegistry {
             os_type: req.os_type.unwrap_or_else(|| "linux".to_string()),  // 默认操作系统类型
             disks: req.disks.iter().map(|d| crate::hypervisor::DiskConfig {
                 volume_path: d.volume_path.clone(),
-                device: d.device.clone(),
-                bootable: d.bootable,
+                bus_type: d.bus_type.clone(),
+                device_type: d.device_type.clone(),
+                format: d.format.clone(),
             }).collect(),
             networks: req.networks.iter().map(|n| crate::hypervisor::NetworkConfig {
                 network_name: n.network_id.clone(),

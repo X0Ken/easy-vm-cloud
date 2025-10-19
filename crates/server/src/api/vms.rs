@@ -290,9 +290,6 @@ pub async fn attach_volume(
         return Err(ApiError::BadRequest("存储卷 ID 不能为空".to_string()));
     }
 
-    if dto.device.is_empty() {
-        return Err(ApiError::BadRequest("设备名不能为空".to_string()));
-    }
 
     let service = VmService::new(state.clone());
     service.attach_volume(&id, dto).await?;

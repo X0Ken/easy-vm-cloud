@@ -234,11 +234,27 @@ impl VmService {
                     anyhow::anyhow!("存储卷 {} 没有路径信息", disk.volume_id)
                 })?;
 
+                // 直接使用类型，无需转换
+                let proto_bus_type = disk.bus_type.clone();
+                let proto_device_type = disk.device_type.clone();
+                
+                // 自动生成设备名
+                let device_name = match disk.device_type {
+                    common::ws_rpc::types::DiskDeviceType::Disk => {
+                        format!("vd{}", (b'a' + proto_disks.len() as u8) as char)
+                    }
+                    common::ws_rpc::types::DiskDeviceType::Cdrom => {
+                        format!("hd{}", (b'a' + proto_disks.len() as u8) as char)
+                    }
+                };
+                
                 proto_disks.push(ProtoDiskSpec {
                     volume_id: disk.volume_id.clone(),  // 保持volume_id用于标识
-                    device: disk.device.clone(),
-                    bootable: disk.bootable,
+                    device: device_name,
                     volume_path,  // 使用专门的字段传递路径
+                    bus_type: proto_bus_type,
+                    device_type: proto_device_type,
+                    format: volume.volume_type.clone(),  // 使用存储卷的格式
                 });
             }
 
@@ -783,16 +799,12 @@ impl VmService {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        // 检查设备名是否已存在
-        if disks.iter().any(|d| d.device == dto.device) {
-            return Err(anyhow::anyhow!("设备名 {} 已被使用", dto.device));
-        }
 
         // 添加新磁盘
         disks.push(DiskSpec {
             volume_id: dto.volume_id.clone(),
-            device: dto.device.clone(),
-            bootable: dto.bootable.unwrap_or(false),
+            bus_type: dto.bus_type.unwrap_or_default(),
+            device_type: dto.device_type.unwrap_or_default(),
         });
 
         // 更新虚拟机的磁盘列表
@@ -884,13 +896,25 @@ impl VmService {
 
         let mut result = Vec::new();
 
-        for disk in disks {
+        for (idx, disk) in disks.iter().enumerate() {
+            // 自动生成设备名
+            let device_name = match disk.device_type {
+                common::ws_rpc::types::DiskDeviceType::Disk => {
+                    format!("vd{}", (b'a' + idx as u8) as char)
+                }
+                common::ws_rpc::types::DiskDeviceType::Cdrom => {
+                    format!("hd{}", (b'a' + idx as u8) as char)
+                }
+            };
+            
             // 查询volume详细信息
             if let Some(volume) = VolumeEntity::find_by_id(&disk.volume_id).one(db).await? {
                 result.push(VmDiskResponse {
                     volume_id: disk.volume_id.clone(),
-                    device: disk.device.clone(),
-                    bootable: disk.bootable,
+                    device: device_name,
+                    bootable: idx == 0, // 第一个磁盘默认为启动盘
+                    bus_type: disk.bus_type.clone(),
+                    device_type: disk.device_type.clone(),
                     volume_name: Some(volume.name),
                     size_gb: Some(volume.size_gb),
                     volume_type: Some(volume.volume_type),
@@ -900,8 +924,10 @@ impl VmService {
                 // Volume不存在，返回基本信息
                 result.push(VmDiskResponse {
                     volume_id: disk.volume_id.clone(),
-                    device: disk.device.clone(),
-                    bootable: disk.bootable,
+                    device: device_name,
+                    bootable: idx == 0, // 第一个磁盘默认为启动盘
+                    bus_type: disk.bus_type.clone(),
+                    device_type: disk.device_type.clone(),
                     volume_name: None,
                     size_gb: None,
                     volume_type: None,

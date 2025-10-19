@@ -131,6 +131,57 @@
   padding: 24px;
 }
 
+// 配置区域样式
+.config-section {
+  margin-bottom: 24px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+  
+  .section-title {
+    color: #1890ff;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #f0f0f0;
+  }
+}
+
+// 磁盘配置表格样式
+.disk-config {
+  .ant-table {
+    margin-bottom: 16px;
+  }
+  
+  // 表格内选择器样式
+  ::ng-deep .ant-select {
+    width: 100%;
+    
+    .ant-select-selector {
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      
+      &:hover {
+        border-color: #40a9ff;
+      }
+    }
+  }
+  
+  // 表格内按钮样式
+  ::ng-deep .ant-btn {
+    &.ant-btn-text {
+      padding: 4px 8px;
+      height: auto;
+      
+      &:hover {
+        background: #fff2f0;
+      }
+    }
+  }
+}
+
 // 详情弹窗样式
 .vm-detail-content {
   .detail-section {

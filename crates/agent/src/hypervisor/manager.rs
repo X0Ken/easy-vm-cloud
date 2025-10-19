@@ -3,6 +3,7 @@
 /// 负责与 libvirt 交互，管理虚拟机生命周期
 
 use common::Result;
+use common::ws_rpc::types::{DiskBusType, DiskDeviceType};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use virt::connect::Connect;
@@ -142,31 +143,52 @@ impl HypervisorManager {
         // 模拟器
         writeln!(xml, "    <emulator>/usr/bin/qemu-system-x86_64</emulator>").unwrap();
         
-        // 磁盘 - 根据操作系统类型优化
+        // 磁盘 - 根据操作系统类型和配置优化
         for (idx, disk) in config.disks.iter().enumerate() {
-            writeln!(xml, "    <disk type='file' device='disk'>").unwrap();
+            let device_type = match disk.device_type {
+                DiskDeviceType::Disk => "disk",
+                DiskDeviceType::Cdrom => "cdrom",
+            };
             
-            // Windows 优化磁盘配置
-            if config.os_type == "windows" {
-                writeln!(xml, "      <driver name='qemu' type='qcow2' cache='directsync' io='native'/>").unwrap();
-            } else {
-                writeln!(xml, "      <driver name='qemu' type='qcow2' cache='writeback'/>").unwrap();
+            writeln!(xml, "    <disk type='file' device='{}'>", device_type).unwrap();
+            
+            // 根据设备类型和操作系统优化驱动配置
+            match disk.device_type {
+                DiskDeviceType::Disk => {
+                    if config.os_type == "windows" {
+                        writeln!(xml, "      <driver name='qemu' type='{}' cache='directsync' io='native'/>", disk.format).unwrap();
+                    } else {
+                        writeln!(xml, "      <driver name='qemu' type='{}' cache='writeback'/>", disk.format).unwrap();
+                    }
+                }
+                DiskDeviceType::Cdrom => {
+                    writeln!(xml, "      <driver name='qemu' type='raw'/>").unwrap();
+                }
             }
             
             writeln!(xml, "      <source file='{}'/>", disk.volume_path).unwrap();
             
-            let device_name = if disk.device.is_empty() {
-                format!("vd{}", (b'a' + idx as u8) as char)
-            } else {
-                disk.device.clone()
+            // 自动生成设备名 - 根据总线类型和设备类型
+            let device_name = match (disk.bus_type.clone(), disk.device_type.clone()) {
+                (DiskBusType::Virtio, DiskDeviceType::Disk) => format!("vd{}", (b'a' + idx as u8) as char),
+                (DiskBusType::Scsi, DiskDeviceType::Disk) => format!("sd{}", (b'a' + idx as u8) as char),
+                (DiskBusType::Ide, DiskDeviceType::Disk) => format!("hd{}", (b'a' + idx as u8) as char),
+                (_, DiskDeviceType::Cdrom) => format!("hd{}", (b'a' + idx as u8) as char),
             };
             
-            writeln!(xml, "      <target dev='{}' bus='virtio'/>", device_name).unwrap();
-            
-            if disk.bootable {
-                writeln!(xml, "      <boot order='1'/>").unwrap();
+            // 根据总线类型设置总线和控制器
+            match disk.bus_type {
+                DiskBusType::Virtio => {
+                    writeln!(xml, "      <target dev='{}' bus='virtio'/>", device_name).unwrap();
+                }
+                DiskBusType::Scsi => {
+                    writeln!(xml, "      <target dev='{}' bus='scsi'/>", device_name).unwrap();
+                    writeln!(xml, "      <address type='drive' controller='0' bus='0' target='0' unit='{}'/>", idx).unwrap();
+                }
+                DiskBusType::Ide => {
+                    writeln!(xml, "      <target dev='{}' bus='ide'/>", device_name).unwrap();
+                }
             }
-            
             writeln!(xml, "    </disk>").unwrap();
         }
         
@@ -217,6 +239,26 @@ impl HypervisorManager {
         writeln!(xml, "    <console type='pty'>").unwrap();
         writeln!(xml, "      <target type='serial' port='0'/>").unwrap();
         writeln!(xml, "    </console>").unwrap();
+        
+        // VirtIO 串口控制器 - QGA 必需
+        writeln!(xml, "    <controller type='virtio-serial' index='0'>").unwrap();
+        writeln!(xml, "      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>").unwrap();
+        writeln!(xml, "    </controller>").unwrap();
+        
+        // 检查是否需要 virtio-scsi 控制器
+        let needs_virtio_scsi = config.disks.iter().any(|disk| disk.bus_type == DiskBusType::Scsi);
+        if needs_virtio_scsi {
+            writeln!(xml, "    <controller type='scsi' index='0' model='virtio-scsi'>").unwrap();
+            writeln!(xml, "      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>").unwrap();
+            writeln!(xml, "    </controller>").unwrap();
+        }
+        
+        // QEMU Guest Agent 串口设备
+        writeln!(xml, "    <channel type='unix'>").unwrap();
+        writeln!(xml, "      <source mode='bind'/>").unwrap();
+        writeln!(xml, "      <target type='virtio' name='org.qemu.guest_agent.0'/>").unwrap();
+        writeln!(xml, "      <address type='virtio-serial' controller='0' bus='0' port='1'/>").unwrap();
+        writeln!(xml, "    </channel>").unwrap();
         
         // VGA 图形 - 根据操作系统类型优化
         writeln!(xml, "    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'>").unwrap();
@@ -492,11 +534,13 @@ pub struct VMConfig {
     pub networks: Vec<NetworkConfig>,
 }
 
+
 /// 磁盘配置
 pub struct DiskConfig {
     pub volume_path: String,
-    pub device: String,  // vda, vdb, etc.
-    pub bootable: bool,
+    pub bus_type: DiskBusType,      // 总线类型: virtio, scsi, ide
+    pub device_type: DiskDeviceType, // 设备类型: disk, cdrom
+    pub format: String,              // 磁盘格式: qcow2, raw, vmdk 等
 }
 
 /// 网络配置

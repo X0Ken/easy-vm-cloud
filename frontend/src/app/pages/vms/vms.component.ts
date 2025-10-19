@@ -16,6 +16,8 @@ import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzEmptyModule } from 'ng-zorro-antd/empty';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
+import { NzGridModule } from 'ng-zorro-antd/grid';
+import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { FormsModule } from '@angular/forms';
 import { VmService, VM, Node, CreateVMRequest, UpdateVMRequest, PaginatedResponse } from '../../services/vm.service';
 import { StorageService } from '../../services/storage.service';
@@ -44,6 +46,8 @@ import { Subject } from 'rxjs';
     NzPopconfirmModule,
     NzEmptyModule,
     NzDropDownModule,
+    NzGridModule,
+    NzAlertModule,
     FormsModule
   ],
   templateUrl: './vms.component.html',
@@ -70,6 +74,7 @@ export class VmsComponent implements OnInit {
   // WebSocket 相关
   private destroy$ = new Subject<void>();
   
+  
   // 分页状态
   pagination = {
     current_page: 1,
@@ -87,7 +92,7 @@ export class VmsComponent implements OnInit {
     vcpu: 1,
     memory_mb: 1024,
     os_type: 'linux', // 默认操作系统类型
-    selected_volume_id: null as string | null,
+    disks: [] as any[], // 多块盘配置
     selected_network_id: null as string | null
   };
 
@@ -102,6 +107,8 @@ export class VmsComponent implements OnInit {
   ngOnInit(): void {
     this.loadVms();
     this.setupWebSocketListeners();
+    // 初始化时添加第一块磁盘
+    this.addDisk();
   }
 
   ngOnDestroy(): void {
@@ -294,7 +301,7 @@ export class VmsComponent implements OnInit {
       vcpu: vm.vcpu,
       memory_mb: vm.memory_mb,
       os_type: vm.os_type, // 添加操作系统类型
-      selected_volume_id: null, // 编辑时不显示存储卷和网络选择
+      disks: [], // 编辑时不显示磁盘配置
       selected_network_id: null
     };
     this.isModalVisible = true;
@@ -315,10 +322,19 @@ export class VmsComponent implements OnInit {
 
   createVm(): void {
     // 验证必需字段
-    if (!this.formData.selected_volume_id) {
-      this.message.error('请选择存储卷');
+    if (this.formData.disks.length === 0) {
+      this.message.error('请至少添加一块磁盘');
       return;
     }
+    
+    // 验证所有磁盘都选择了存储卷
+    for (let i = 0; i < this.formData.disks.length; i++) {
+      if (!this.formData.disks[i].volume_id) {
+        this.message.error(`请为第 ${i + 1} 块磁盘选择存储卷`);
+        return;
+      }
+    }
+    
     if (!this.formData.selected_network_id) {
       this.message.error('请选择网络');
       return;
@@ -334,11 +350,11 @@ export class VmsComponent implements OnInit {
       vcpu: this.formData.vcpu,
       memory_mb: this.formData.memory_mb,
       os_type: this.formData.os_type, // 操作系统类型
-      disks: [{
-        volume_id: this.formData.selected_volume_id!.toString(), // 存储卷ID转换为字符串
-        device: 'vda', // 默认设备名
-        bootable: true // 设为可启动
-      }],
+      disks: this.formData.disks.map(disk => ({
+        volume_id: disk.volume_id.toString(),
+        bus_type: disk.bus_type,
+        device_type: disk.device_type
+      })),
       networks: [{
         network_id: this.formData.selected_network_id!.toString(), // 网络ID转换为字符串
         mac_address: null, // 让后端自动分配
@@ -445,10 +461,36 @@ export class VmsComponent implements OnInit {
       vcpu: 1,
       memory_mb: 1024,
       os_type: 'linux', // 默认操作系统类型
-      selected_volume_id: null,
+      disks: [{
+        volume_id: null,
+        bus_type: 'virtio',
+        device_type: 'disk'
+      }], // 默认包含一个磁盘配置
       selected_network_id: null
     };
   }
+
+  // 添加磁盘
+  addDisk(): void {
+    this.formData.disks.push({
+      volume_id: null,
+      bus_type: 'virtio',
+      device_type: 'disk'
+    });
+  }
+
+  // 删除磁盘
+  removeDisk(index: number): void {
+    this.formData.disks.splice(index, 1);
+  }
+
+
+  // 获取可用的存储卷（排除已选择的）
+  getAvailableVolumes(): any[] {
+    const selectedVolumeIds = this.formData.disks.map(d => d.volume_id).filter(id => id);
+    return this.availableDisks.filter(volume => !selectedVolumeIds.includes(volume.id));
+  }
+
 
   formatMemory(memoryMb: number): string {
     if (memoryMb >= 1024) {

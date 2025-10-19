@@ -1,5 +1,6 @@
 /// 虚拟机数据模型
 
+use common::ws_rpc::types::{DiskBusType, DiskDeviceType};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -157,12 +158,13 @@ pub struct VmListResponse {
     pub page_size: usize,
 }
 
+
 /// 磁盘规格
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DiskSpec {
     pub volume_id: String,
-    pub device: String,
-    pub bootable: bool,
+    pub bus_type: DiskBusType,      // 总线类型: virtio, scsi, ide
+    pub device_type: DiskDeviceType, // 设备类型: disk, cdrom
 }
 
 /// 网络接口规格
@@ -180,8 +182,8 @@ pub struct NetworkInterfaceSpec {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AttachVolumeDto {
     pub volume_id: String,
-    pub device: String,  // vda, vdb, etc.
-    pub bootable: Option<bool>,
+    pub bus_type: Option<DiskBusType>,      // 总线类型，默认为 virtio
+    pub device_type: Option<DiskDeviceType>, // 设备类型，默认为 disk
 }
 
 /// Detach Volume 请求
@@ -194,8 +196,10 @@ pub struct DetachVolumeDto {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VmDiskResponse {
     pub volume_id: String,
-    pub device: String,
+    pub device: String,  // 自动生成的设备名
     pub bootable: bool,
+    pub bus_type: DiskBusType,      // 总线类型
+    pub device_type: DiskDeviceType, // 设备类型
     pub volume_name: Option<String>,
     pub size_gb: Option<i64>,
     pub volume_type: Option<String>,
