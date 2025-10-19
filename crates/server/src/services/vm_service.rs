@@ -11,8 +11,8 @@ use crate::db::models::vm::{
 };
 use crate::db::models::volume::{Entity as VolumeEntity, Column as VolumeColumn, ActiveModel as VolumeActiveModel};
 use crate::db::models::network::{Entity as NetworkEntity};
-use crate::db::models::task::{Entity as TaskEntity, ActiveModel as TaskActiveModel};
-use crate::db::models::node::{Entity as NodeEntity, Column as NodeColumn};
+use crate::db::models::task::{ActiveModel as TaskActiveModel};
+use crate::db::models::node::{Entity as NodeEntity};
 use crate::app_state::AppState;
 use crate::services::network_service::NetworkService;
 use crate::ws::FrontendMessage;
@@ -186,7 +186,7 @@ impl VmService {
         };
 
         // 插入数据库
-        let mut vm = vm_active.insert(db).await?;
+        let vm = vm_active.insert(db).await?;
 
         // 更新volumes的vm_id
         if let Some(ref disks) = dto.disks {
@@ -502,12 +502,6 @@ impl VmService {
             return Err(anyhow::anyhow!("虚拟机已经在运行中"));
         }
 
-        let node_id = vm
-            .node_id
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("虚拟机未分配节点"))?;
-
-
         // 使用 WebSocket RPC 调用 Agent 启动虚拟机
         let request = VmOperationRequest {
             vm_id: id.to_string(),
@@ -562,11 +556,6 @@ impl VmService {
         if vm.status == VmStatus::Stopped.as_str() {
             return Err(anyhow::anyhow!("虚拟机已经停止"));
         }
-
-        let node_id = vm
-            .node_id
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("虚拟机未分配节点"))?;
 
         // 创建异步任务
         let task_id = uuid::Uuid::new_v4().to_string();
@@ -638,11 +627,6 @@ impl VmService {
             .one(db)
             .await?
             .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
-
-        let node_id = vm
-            .node_id
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("虚拟机未分配节点"))?;
 
         // 使用 WebSocket RPC 调用 Agent 重启虚拟机
         let request = VmOperationRequest {

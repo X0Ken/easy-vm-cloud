@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     info!("✅ 配置加载成功");
 
     // 建立数据库连接 (SeaORM) - 用于用户、角色、权限等管理
-    let sea_db = establish_connection()
+    let sea_db = establish_connection(&cfg.database_url)
         .await
         .expect("SeaORM 数据库连接失败");
     info!("✅ SeaORM 数据库连接成功");
