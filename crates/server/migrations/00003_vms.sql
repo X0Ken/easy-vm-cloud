@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS vms (
     os_type VARCHAR(20) DEFAULT 'linux',  -- 操作系统类型: linux, windows
     
     -- 磁盘和网络配置 (JSON)
-    disk_ids JSONB,
+    volumes JSONB,
     network_interfaces JSONB,
     
     -- 元数据

@@ -7,7 +7,7 @@ pub mod manager;
 pub use manager::{
     HypervisorManager,
     VMConfig,
-    DiskConfig,
+    VolumeConfig,
     NetworkConfig,
     VMInfo,
 };

@@ -3,6 +3,7 @@
 /// 负责与 libvirt 交互，管理虚拟机生命周期
 
 use common::Result;
+use serde::{Serialize, Deserialize};
 use common::ws_rpc::types::{DiskBusType, DiskDeviceType};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -40,29 +41,6 @@ impl HypervisorManager {
         }
         
         Ok(false)
-    }
-
-    /// 创建虚拟机
-    pub async fn create_vm(&self, config: &VMConfig) -> Result<String> {
-        tracing::info!("🔧 创建虚拟机: {}", config.name);
-        
-        let conn = self.conn.lock().await;
-        
-        // 生成虚拟机 XML 配置
-        let xml = Self::generate_vm_xml(config)?;
-        
-        tracing::info!("虚拟机 XML 配置:\n{}", xml);
-        
-        // 使用 libvirt 定义虚拟机（但不启动）
-        let domain = virt::domain::Domain::define_xml(&conn, &xml)
-            .map_err(|e| common::Error::Internal(format!("无法定义虚拟机: {}", e)))?;
-        
-        // 使用传入的 UUID
-        let uuid = &config.uuid;
-        
-        tracing::info!("✅ 虚拟机 {} 定义成功 (UUID: {})", config.name, uuid);
-        
-        Ok(uuid.clone())
     }
     
     /// 生成虚拟机 XML 配置
@@ -144,8 +122,8 @@ impl HypervisorManager {
         writeln!(xml, "    <emulator>/usr/bin/qemu-system-x86_64</emulator>").unwrap();
         
         // 磁盘 - 根据操作系统类型和配置优化
-        for (idx, disk) in config.disks.iter().enumerate() {
-            let device_type = match disk.device_type {
+        for (idx, volume) in config.volumes.iter().enumerate() {
+            let device_type = match volume.device_type {
                 DiskDeviceType::Disk => "disk",
                 DiskDeviceType::Cdrom => "cdrom",
             };
@@ -153,12 +131,12 @@ impl HypervisorManager {
             writeln!(xml, "    <disk type='file' device='{}'>", device_type).unwrap();
             
             // 根据设备类型和操作系统优化驱动配置
-            match disk.device_type {
+            match volume.device_type {
                 DiskDeviceType::Disk => {
                     if config.os_type == "windows" {
-                        writeln!(xml, "      <driver name='qemu' type='{}' cache='directsync' io='native'/>", disk.format).unwrap();
+                        writeln!(xml, "      <driver name='qemu' type='{}' cache='directsync' io='native'/>", volume.format).unwrap();
                     } else {
-                        writeln!(xml, "      <driver name='qemu' type='{}' cache='writeback'/>", disk.format).unwrap();
+                        writeln!(xml, "      <driver name='qemu' type='{}' cache='writeback'/>", volume.format).unwrap();
                     }
                 }
                 DiskDeviceType::Cdrom => {
@@ -166,13 +144,13 @@ impl HypervisorManager {
                 }
             }
             
-            writeln!(xml, "      <source file='{}'/>", disk.volume_path).unwrap();
+            writeln!(xml, "      <source file='{}'/>", volume.volume_path).unwrap();
             
             // 添加序列号 - 使用 volume_id 作为序列号
-            writeln!(xml, "      <serial>{}</serial>", disk.volume_id).unwrap();
+            writeln!(xml, "      <serial>{}</serial>", volume.volume_id).unwrap();
             
             // 自动生成设备名 - 根据总线类型和设备类型
-            let device_name = match (disk.bus_type.clone(), disk.device_type.clone()) {
+            let device_name = match (volume.bus_type.clone(), volume.device_type.clone()) {
                 (DiskBusType::Virtio, DiskDeviceType::Disk) => format!("vd{}", (b'a' + idx as u8) as char),
                 (DiskBusType::Scsi, DiskDeviceType::Disk) => format!("sd{}", (b'a' + idx as u8) as char),
                 (DiskBusType::Ide, DiskDeviceType::Disk) => format!("hd{}", (b'a' + idx as u8) as char),
@@ -180,7 +158,7 @@ impl HypervisorManager {
             };
             
             // 根据总线类型设置总线和控制器
-            match disk.bus_type {
+            match volume.bus_type {
                 DiskBusType::Virtio => {
                     writeln!(xml, "      <target dev='{}' bus='virtio'/>", device_name).unwrap();
                 }
@@ -249,7 +227,7 @@ impl HypervisorManager {
         writeln!(xml, "    </controller>").unwrap();
         
         // 检查是否需要 virtio-scsi 控制器
-        let needs_virtio_scsi = config.disks.iter().any(|disk| disk.bus_type == DiskBusType::Scsi);
+        let needs_virtio_scsi = config.volumes.iter().any(|volume| volume.bus_type == DiskBusType::Scsi);
         if needs_virtio_scsi {
             writeln!(xml, "    <controller type='scsi' index='0' model='virtio-scsi'>").unwrap();
             writeln!(xml, "      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>").unwrap();
@@ -343,6 +321,52 @@ impl HypervisorManager {
             .map_err(|e| common::Error::Internal(format!("无法启动虚拟机: {}", e)))?;
         
         tracing::info!("✅ 虚拟机 {} 启动成功", vm_id);
+        Ok(())
+    }
+
+    /// 根据配置重新定义并启动虚拟机
+    /// 
+    /// 按照 vms.md 流程：Agent需要重新define xml，确保虚拟机配置与数据库一致。
+    pub async fn start_vm_with_config(&self, vm_id: &str, config: &VMConfig) -> Result<()> {
+        tracing::info!("🚀 根据配置重新定义并启动虚拟机: {}", vm_id);
+        
+        let conn = self.conn.lock().await;
+        
+        // 检查虚拟机是否已存在
+        if let Ok(domain) = virt::domain::Domain::lookup_by_uuid_string(&conn, vm_id) {
+            // 如果虚拟机已存在，先删除旧定义
+            tracing::info!("虚拟机 {} 已存在，先删除旧定义", vm_id);
+            let (state, _reason) = domain.get_state()
+                .map_err(|e| common::Error::Internal(format!("无法获取虚拟机状态: {}", e)))?;
+            
+            // 如果虚拟机正在运行，先停止
+            if state == 1 { // VIR_DOMAIN_RUNNING
+                tracing::info!("虚拟机 {} 正在运行，先停止", vm_id);
+                domain.destroy()
+                    .map_err(|e| common::Error::Internal(format!("无法停止虚拟机: {}", e)))?;
+            }
+            
+            // 删除虚拟机定义
+            domain.undefine()
+                .map_err(|e| common::Error::Internal(format!("无法删除虚拟机定义: {}", e)))?;
+        }
+        
+        // 生成新的虚拟机 XML 配置
+        let xml = Self::generate_vm_xml(config)?;
+        tracing::info!("虚拟机 XML 配置:\n{}", xml);
+        
+        // 重新定义虚拟机
+        let _domain = virt::domain::Domain::define_xml(&conn, &xml)
+            .map_err(|e| common::Error::Internal(format!("无法定义虚拟机: {}", e)))?;
+        
+        // 启动虚拟机
+        let domain = virt::domain::Domain::lookup_by_uuid_string(&conn, vm_id)
+            .map_err(|e| common::Error::Internal(format!("无法查找虚拟机: {}", e)))?;
+        
+        domain.create()
+            .map_err(|e| common::Error::Internal(format!("无法启动虚拟机: {}", e)))?;
+        
+        tracing::info!("✅ 虚拟机 {} 重新定义并启动成功", vm_id);
         Ok(())
     }
 
@@ -554,11 +578,14 @@ impl HypervisorManager {
         
         // libvirt 域状态常量
         const VIR_DOMAIN_RUNNING: u32 = 1;
-        const VIR_DOMAIN_PAUSED: u32 = 3;
-        const VIR_DOMAIN_SHUTOFF: u32 = 5;
         
-        let is_running = state == VIR_DOMAIN_RUNNING || state == VIR_DOMAIN_PAUSED;
-        tracing::info!("虚拟机状态: {} (运行中: {})", state, is_running);
+        if state != VIR_DOMAIN_RUNNING {
+            return Err(common::Error::InvalidArgument(format!(
+                "仅支持在运行中状态挂载存储卷，当前状态: {}",
+                state
+            )));
+        }
+        tracing::info!("虚拟机状态: {} (运行中: true)", state);
 
         // 获取当前磁盘设备列表，确定下一个设备名
         let device_name = self.get_next_disk_device(&domain).await?;
@@ -575,27 +602,10 @@ impl HypervisorManager {
 
         tracing::debug!("磁盘XML配置: {}", disk_xml);
 
-        if is_running {
-            // 虚拟机正在运行，使用 attach_device 进行热插拔
-            tracing::info!("虚拟机正在运行，使用热插拔方式挂载存储卷");
-            domain.attach_device(&disk_xml)
-                .map_err(|e| common::Error::Internal(format!("挂载存储卷失败: {}", e)))?;
-        } else {
-            // 虚拟机未运行，重新定义虚拟机配置
-            tracing::info!("虚拟机未运行，重新定义虚拟机配置");
-            
-            // 获取当前虚拟机XML配置
-            let current_xml = domain.get_xml_desc(0)
-                .map_err(|e| common::Error::Internal(format!("获取虚拟机XML失败: {}", e)))?;
-            
-            // 解析XML并添加磁盘设备
-            let updated_xml = self.add_disk_to_xml(&current_xml, &disk_xml, volume_id)?;
-            tracing::info!("虚拟机 XML 配置:\n{}", updated_xml);
-            
-            // 重新定义虚拟机配置
-            virt::domain::Domain::define_xml(&conn, &updated_xml)
-                .map_err(|e| common::Error::Internal(format!("重新定义虚拟机配置失败: {}", e)))?;
-        }
+        // 仅在运行中执行热插拔
+        tracing::info!("虚拟机正在运行，使用热插拔方式挂载存储卷");
+        domain.attach_device(&disk_xml)
+            .map_err(|e| common::Error::Internal(format!("挂载存储卷失败: {}", e)))?;
 
         tracing::info!("✅ 存储卷挂载成功: vm_id={}, volume_id={}, device={}", vm_id, volume_id, device_name);
         Ok(device_name)
@@ -626,11 +636,14 @@ impl HypervisorManager {
         
         // libvirt 域状态常量
         const VIR_DOMAIN_RUNNING: u32 = 1;
-        const VIR_DOMAIN_PAUSED: u32 = 3;
-        const VIR_DOMAIN_SHUTOFF: u32 = 5;
         
-        let is_running = state == VIR_DOMAIN_RUNNING || state == VIR_DOMAIN_PAUSED;
-        tracing::info!("虚拟机状态: {} (运行中: {})", state, is_running);
+        if state != VIR_DOMAIN_RUNNING {
+            return Err(common::Error::InvalidArgument(format!(
+                "仅支持在运行中状态分离存储卷，当前状态: {}",
+                state
+            )));
+        }
+        tracing::info!("虚拟机状态: {} (运行中: true)", state);
 
         // 获取虚拟机XML配置，找到要分离的设备详细信息
         let xml = domain.get_xml_desc(0)
@@ -641,22 +654,10 @@ impl HypervisorManager {
             Ok(disk_xml) => {
                 tracing::debug!("分离磁盘XML: {}", disk_xml);
 
-                if is_running {
-                    // 虚拟机正在运行，使用 detach_device 进行热插拔
-                    tracing::info!("虚拟机正在运行，使用热插拔方式分离存储卷");
-                    domain.detach_device(&disk_xml)
-                        .map_err(|e| common::Error::Internal(format!("分离存储卷失败: {}", e)))?;
-                } else {
-                    // 虚拟机未运行，重新定义虚拟机配置
-                    tracing::info!("虚拟机未运行，重新定义虚拟机配置");
-                    
-                    // 从XML配置中移除磁盘设备
-                    let updated_xml = self.remove_disk_from_xml(&xml, volume_id)?;
-                    
-                    // 重新定义虚拟机配置
-                    virt::domain::Domain::define_xml(&conn, &updated_xml)
-                        .map_err(|e| common::Error::Internal(format!("重新定义虚拟机配置失败: {}", e)))?;
-                }
+                // 仅在运行中执行热拔插分离
+                tracing::info!("虚拟机正在运行，使用热插拔方式分离存储卷");
+                domain.detach_device(&disk_xml)
+                    .map_err(|e| common::Error::Internal(format!("分离存储卷失败: {}", e)))?;
 
                 tracing::info!("✅ 存储卷分离成功: vm_id={}, volume_id={}", vm_id, volume_id);
             }
@@ -851,19 +852,21 @@ impl HypervisorManager {
 }
 
 /// 虚拟机配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VMConfig {
     pub name: String,
     pub uuid: String,  // 使用传入的 UUID
     pub vcpu: u32,
     pub memory_mb: u64,
     pub os_type: String,  // 操作系统类型: linux, windows
-    pub disks: Vec<DiskConfig>,
+    pub volumes: Vec<VolumeConfig>,
     pub networks: Vec<NetworkConfig>,
 }
 
 
-/// 磁盘配置
-pub struct DiskConfig {
+/// 存储卷配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeConfig {
     pub volume_id: String,           // 存储卷ID，用作序列号
     pub volume_path: String,
     pub bus_type: DiskBusType,      // 总线类型: virtio, scsi, ide
@@ -872,6 +875,7 @@ pub struct DiskConfig {
 }
 
 /// 网络配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     pub network_name: String,
     pub bridge_name: String,  // Bridge 名称，例如：br-vlan100
@@ -880,6 +884,7 @@ pub struct NetworkConfig {
 }
 
 /// 虚拟机信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VMInfo {
     pub id: String,
     pub name: String,

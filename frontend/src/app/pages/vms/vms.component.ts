@@ -63,6 +63,11 @@ export class VmsComponent implements OnInit {
   isEditMode = false;
   currentVm: VM | null = null;
   
+  // 运行中仅允许编辑名称
+  get isEditingRunningVm(): boolean {
+    return this.isEditMode && !!this.currentVm && this.currentVm.status === 'running';
+  }
+  
   // 详情弹窗相关
   isDetailModalVisible = false;
   selectedVm: VM | null = null;
@@ -315,6 +320,8 @@ export class VmsComponent implements OnInit {
       disks: [], // 编辑时不显示磁盘配置
       selected_network_id: null
     };
+    // 确保编辑时加载节点列表
+    this.loadNodes();
     this.isModalVisible = true;
   }
 
@@ -392,11 +399,14 @@ export class VmsComponent implements OnInit {
   updateVm(): void {
     if (!this.currentVm) return;
     
-    const updateData: UpdateVMRequest = {
-      name: this.formData.name,
-      vcpu: this.formData.vcpu,
-      memory_mb: this.formData.memory_mb
-    };
+    // 运行中仅允许修改名称
+    const updateData: UpdateVMRequest = this.isEditingRunningVm
+      ? { name: this.formData.name }
+      : {
+          name: this.formData.name,
+          vcpu: this.formData.vcpu,
+          memory_mb: this.formData.memory_mb
+        };
 
     this.vmService.updateVM(this.currentVm.id, updateData).subscribe({
       next: (response) => {

@@ -71,6 +71,9 @@ impl VmService {
     }
 
     /// 创建虚拟机
+    /// 
+    /// 按照 vms.md 流程：API -> Server保存数据到DB -> UI提示成功
+    /// Server保存元数据，agent无需操作。
     pub async fn create_vm(&self, dto: CreateVmDto) -> anyhow::Result<VmResponse> {
         let db = &self.state.sea_db();
         
@@ -151,7 +154,7 @@ impl VmService {
         }
 
         // 序列化 disks 和 networks（使用分配了 IP 的网络配置）
-        let disk_ids_json = dto
+        let volumes_json = dto
             .disks
             .as_ref()
             .map(|disks| serde_json::to_value(disks).ok())
@@ -175,7 +178,7 @@ impl VmService {
             vcpu: Set(dto.vcpu as i32),
             memory_mb: Set(dto.memory_mb as i64),
             os_type: Set(os_type),
-            disk_ids: Set(disk_ids_json),
+            volumes: Set(volumes_json),
             network_interfaces: Set(network_interfaces_json),
             metadata: Set(dto.metadata.clone()),
             uuid: Set(None),
@@ -218,101 +221,8 @@ impl VmService {
             }
         }
 
-        // 调用Agent创建虚拟机
-        if let Some(ref disks) = dto.disks {
-            // 使用 WebSocket RPC 调用 Agent 创建虚拟机
-            // 转换disks为proto格式，需要查询volume的实际路径
-            let mut proto_disks = Vec::new();
-            for disk in disks.iter() {
-                // 查询volume的实际路径
-                let volume = VolumeEntity::find_by_id(&disk.volume_id)
-                    .one(db)
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("存储卷 {} 不存在", disk.volume_id))?;
-                
-                let volume_path = volume.path.ok_or_else(|| {
-                    anyhow::anyhow!("存储卷 {} 没有路径信息", disk.volume_id)
-                })?;
-
-                // 直接使用类型，无需转换
-                let proto_bus_type = disk.bus_type.clone();
-                let proto_device_type = disk.device_type.clone();
-                
-                // 自动生成设备名
-                let device_name = match disk.device_type {
-                    common::ws_rpc::types::DiskDeviceType::Disk => {
-                        format!("vd{}", (b'a' + proto_disks.len() as u8) as char)
-                    }
-                    common::ws_rpc::types::DiskDeviceType::Cdrom => {
-                        format!("hd{}", (b'a' + proto_disks.len() as u8) as char)
-                    }
-                };
-                
-                proto_disks.push(ProtoDiskSpec {
-                    volume_id: disk.volume_id.clone(),  // 保持volume_id用于标识
-                    device: device_name,
-                    volume_path,  // 使用专门的字段传递路径
-                    bus_type: proto_bus_type,
-                    device_type: proto_device_type,
-                    format: volume.volume_type.clone(),  // 使用存储卷的格式
-                });
-            }
-
-            // 转换networks为proto格式（使用分配了 IP 的网络配置）
-            let proto_networks: Vec<ProtoNetworkInterfaceSpec> = network_interfaces_with_ip
-                .iter()
-                .map(|net| {
-                    ProtoNetworkInterfaceSpec {
-                        network_id: net.network_id.clone(),
-                        mac_address: net.mac_address.clone().unwrap_or_default(),
-                        ip_address: net.ip_address.clone().unwrap_or_default(),
-                        model: net.model.clone(),
-                        bridge_name: net.bridge_name.clone().unwrap_or_default(),
-                    }
-                })
-                .collect();
-
-            let request = CreateVmRequest {
-                vm_id: vm_id.clone(),
-                name: dto.name.clone(),
-                vcpu: dto.vcpu,
-                memory_mb: dto.memory_mb,
-                os_type: dto.os_type.clone(),
-                disks: proto_disks,
-                networks: proto_networks,
-                metadata: dto.metadata
-                    .as_ref()
-                    .and_then(|m| m.as_object())
-                    .map(|obj| {
-                        obj.iter()
-                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            };
-
-            // 通过 WebSocket RPC 调用 Agent
-            let node_id = vm.node_id.as_ref()
-                .ok_or_else(|| anyhow::anyhow!("虚拟机未关联节点"))?;
-            
-            let response_msg = self.state.agent_manager()
-                .call(
-                    node_id,
-                    "create_vm",
-                    serde_json::to_value(&request)?,
-                    Duration::from_secs(120)  // VM 创建可能需要较长时间
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
-
-            let result: CreateVmResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
-            )?;
-
-            if !result.success {
-                return Err(anyhow::anyhow!("Agent创建虚拟机失败: {}", result.message));
-            }
-        }
+        // 按照 vms.md 流程：仅保存到数据库，不调用 agent
+        info!("虚拟机 {} 创建成功，已保存到数据库", vm_id);
 
         Ok(self.vm_to_response(vm).await)
     }
@@ -406,8 +316,8 @@ impl VmService {
             vm_active.os_type = Set(os_type);
         }
         if let Some(disks) = dto.disks {
-            let disks_json = serde_json::to_value(disks)?;
-            vm_active.disk_ids = Set(Some(disks_json));
+            let volumes_json = serde_json::to_value(disks)?;
+            vm_active.volumes = Set(Some(volumes_json));
         }
         if let Some(networks) = dto.networks {
             let networks_json = serde_json::to_value(networks)?;
@@ -426,6 +336,9 @@ impl VmService {
     }
 
     /// 删除虚拟机
+    /// 
+    /// 按照 vms.md 流程：
+    /// API -> Server清理DB
     pub async fn delete_vm(&self, id: &str) -> anyhow::Result<()> {
         let db = &self.state.sea_db();
 
@@ -434,12 +347,17 @@ impl VmService {
             .one(db)
             .await?;
         
-        // 释放 VM 的所有 IP 地址
-        if let Some(ref vm_record) = vm {
+        if let Some(vm) = vm {
+            // 如果 VM 正在运行，先停止
+            if vm.status == VmStatus::Running.as_str() {
+                return Err(anyhow::anyhow!("无法删除正在运行的虚拟机，请先停止"));
+            }
+
+            // 释放 VM 的所有 IP 地址
             let network_service = NetworkService::new(self.state.clone());
             
             // 从网络接口配置中获取所有网络 ID
-            if let Some(ref network_interfaces) = vm_record.network_interfaces {
+            if let Some(ref network_interfaces) = vm.network_interfaces {
                 if let Ok(interfaces) = serde_json::from_value::<Vec<NetworkInterfaceSpec>>(network_interfaces.clone()) {
                     for interface in interfaces {
                         if let Err(e) = network_service.release_ip(&interface.network_id, id).await {
@@ -448,33 +366,6 @@ impl VmService {
                             info!("成功释放 VM {} 在网络 {} 的 IP", id, interface.network_id);
                         }
                     }
-                }
-            }
-        }
-
-        if let Some(vm) = vm {
-            // 如果 VM 正在运行，先停止
-            if vm.status == VmStatus::Running.as_str() {
-                return Err(anyhow::anyhow!("无法删除正在运行的虚拟机，请先停止"));
-            }
-
-            // 调用 Agent 删除虚拟机
-            if let Some(node_id) = &vm.node_id {
-                // 使用 WebSocket RPC 调用 Agent 删除虚拟机
-                let request = VmOperationRequest {
-                    vm_id: id.to_string(),
-                    force: false,
-                };
-                
-                // 尝试调用 Agent，但即使失败也继续删除数据库记录
-                match self.state.agent_manager().call(
-                    &node_id,
-                    "delete_vm",
-                    serde_json::to_value(&request).unwrap_or_default(),
-                    Duration::from_secs(60)
-                ).await {
-                    Ok(_) => info!("成功通知 Agent 删除虚拟机: {}", id),
-                    Err(e) => warn!("通知 Agent 删除虚拟机失败（将继续删除数据库记录）: {}", e),
                 }
             }
 
@@ -493,11 +384,12 @@ impl VmService {
                 volume_active.update(db).await?;
             }
 
-            // 从数据库删除
+            // 从数据库删除虚拟机记录
             VmEntity::delete_by_id(id.to_string())
                 .exec(db)
                 .await?;
 
+            info!("虚拟机 {} 已从数据库删除", id);
             Ok(())
         } else {
             Err(anyhow::anyhow!("虚拟机不存在"))
@@ -505,6 +397,11 @@ impl VmService {
     }
 
     /// 启动虚拟机
+    /// 
+    /// 按照 vms.md 流程：
+    /// API -> Server记录DB -> UI提示进行中
+    /// --(notify)-> agent 重新define xml，启动虚拟机 --(notify)-> Server更新db记录 -> UI提示完成
+    /// Agent需要重新define xml，确保虚拟机配置与数据库一致。
     pub async fn start_vm(&self, id: &str) -> anyhow::Result<()> {
         let db = &self.state.sea_db();
 
@@ -518,48 +415,74 @@ impl VmService {
             return Err(anyhow::anyhow!("虚拟机已经在运行中"));
         }
 
-        // 使用 WebSocket RPC 调用 Agent 启动虚拟机
-        let request = VmOperationRequest {
-            vm_id: id.to_string(),
-            force: false,
-        };
+        // 通知 Agent 所需的字段从 Model 读取，避免 ActiveValue 参与序列化
+        let node_id = vm.node_id.clone().ok_or_else(|| anyhow::anyhow!("虚拟机未关联节点"))?;
+        // 组装 Agent 所需的磁盘信息（DiskConfig）
+        let mut vm_start_volumes = Vec::new();
+        if let Some(ref volumes_json) = vm.volumes {
+            if let Ok(volumes) = serde_json::from_value::<Vec<DiskSpec>>(volumes_json.clone()) {
+                for v in volumes {
+                    // 查询 volume 以获取路径与格式
+                    let vol = VolumeEntity::find_by_id(&v.volume_id)
+                        .one(db)
+                        .await?
+                        .ok_or_else(|| anyhow::anyhow!(format!("存储卷不存在: {}", v.volume_id)))?;
 
-        let node_id = vm.node_id.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("虚拟机未关联节点"))?;
-        
-        let response_msg = self.state.agent_manager()
-            .call(
-                node_id,
-                "start_vm",
-                serde_json::to_value(&request)?,
-                Duration::from_secs(60)
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
+                    let volume_path = vol.path.ok_or_else(|| anyhow::anyhow!(format!("存储卷缺少路径: {}", v.volume_id)))?;
+                    let format = vol.volume_type;
 
-        let result: VmOperationResponse = serde_json::from_value(
-            response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
-        )?;
-
-        if !result.success {
-            return Err(anyhow::anyhow!("启动虚拟机失败: {}", result.message));
+                    let volume_value = serde_json::json!({
+                        "volume_id": v.volume_id,
+                        "volume_path": volume_path,
+                        "bus_type": v.bus_type,
+                        "device_type": v.device_type,
+                        "format": format
+                    });
+                    vm_start_volumes.push(volume_value);
+                }
+            }
         }
 
-        // 更新数据库状态
+        let start_request = serde_json::json!({
+            "vm_id": id,
+            "name": vm.name,
+            "vcpu": vm.vcpu,
+            "memory_mb": vm.memory_mb,
+            "os_type": vm.os_type,
+            // 新字段：按 Agent 期望结构提供的磁盘数组
+            "volumes": vm_start_volumes,
+            // 先保持原有网络结构，后续再转换为 Agent 期望的 NetworkConfig
+            "networks": vm.network_interfaces,
+            "metadata": vm.metadata
+        });
+
+        // 更新数据库状态为"启动中"
         let now = Utc::now();
         let mut vm_active: VmActiveModel = vm.into();
-        vm_active.status = Set(VmStatus::Running.as_str().to_string());
-        vm_active.started_at = Set(Some(now.into()));
+        vm_active.status = Set("starting".to_string());
         vm_active.updated_at = Set(now.into());
         vm_active.update(db).await?;
 
-        // 发送状态更新通知给前端
-        self.notify_vm_status_update(id, "running", Some("虚拟机启动成功")).await;
+        // 异步通知 Agent，不等待结果
+        self.state.agent_manager()
+            .notify(
+                &node_id,
+                "start_vm_async",
+                start_request,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("发送启动通知失败: {}", e))?;
 
+        info!("虚拟机 {} 启动通知已发送给 Agent", id);
         Ok(())
     }
 
     /// 停止虚拟机
+    /// 
+    /// 按照 vms.md 流程：
+    /// API -> Server记录DB -> UI提示进行中
+    /// --(notify)-> agent 关机并undefine xml --(notify)-> Server更新db记录 -> UI提示完成
+    /// 关机需要区是否为强制关机模式。在非强制失败后，自用使用强制关机。
     pub async fn stop_vm(&self, id: &str, force: bool) -> anyhow::Result<()> {
         let db = &self.state.sea_db();
 
@@ -573,68 +496,41 @@ impl VmService {
             return Err(anyhow::anyhow!("虚拟机已经停止"));
         }
 
-        // 创建异步任务
-        let task_id = uuid::Uuid::new_v4().to_string();
-        let task_payload = serde_json::json!({
+        // 通知 Agent 所需字段从 Model 读取
+        let node_id = vm.node_id.clone().ok_or_else(|| anyhow::anyhow!("虚拟机未关联节点"))?;
+        
+        let stop_request = serde_json::json!({
             "vm_id": id,
-            "force": force,
-            "operation": "stop_vm"
+            "force": force
         });
 
-        // 在数据库中创建任务记录
-        let task = TaskActiveModel {
-            id: Set(task_id.clone()),
-            task_type: Set("stop_vm".to_string()),
-            status: Set("pending".to_string()),
-            progress: Set(0),
-            payload: Set(task_payload.clone()),
-            target_type: Set(Some("vm".to_string())),
-            target_id: Set(Some(id.to_string())),
-            node_id: Set(vm.node_id.clone()),
-            created_at: Set(Utc::now().into()),
-            updated_at: Set(Utc::now().into()),
-            ..Default::default()
-        };
-        task.insert(db).await.map_err(|e| anyhow::anyhow!("创建任务记录失败: {}", e))?;
-        info!("debug: 创建任务记录成功: {}", task_id);
-
-        info!("debug: 发送异步通知给 Agent，包含 task_id");
-        // 发送异步通知给 Agent，包含 task_id
-        let node_id = vm.node_id.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("虚拟机未关联节点"))?;
-        
-        info!("debug: 获取节点 ID: {}", node_id);
-        
-        let request = serde_json::json!({
-            "vm_id": id,
-            "force": force,
-            "task_id": task_id
-        });
-        info!("debug: 发送异步通知给 Agent，生成请求: {}", request);
-
+        // 异步通知 Agent，不等待结果
         self.state.agent_manager()
             .notify(
-                node_id,
+                &node_id,
                 "stop_vm_async",
-                request,
+                stop_request,
             )
             .await
-            .map_err(|e| anyhow::anyhow!("发送异步通知失败: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("发送停止通知失败: {}", e))?;
 
-        // 立即更新 VM 状态为 "stopping"
+        info!("虚拟机 {} 停止通知已发送给 Agent", id);
+
+        // 更新数据库状态为"停止中"
         let now = Utc::now();
         let mut vm_active: VmActiveModel = vm.into();
         vm_active.status = Set("stopping".to_string());
         vm_active.updated_at = Set(now.into());
         vm_active.update(db).await?;
 
-        // 发送状态更新通知给前端
-        self.notify_vm_status_update(id, "stopping", Some("虚拟机停止中")).await;
-
         Ok(())
     }
 
-    /// 重启虚拟机
+    /// 重启虚拟机（异步）
+    /// 
+    /// 按照 vms.md 流程：
+    /// API -> Server记录DB -> UI提示进行中
+    /// --(notify)-> agent 尝试软关机并启动，否则强制关机并启动 --(notify)-> Server更新db记录 -> UI提示完成
     pub async fn restart_vm(&self, id: &str) -> anyhow::Result<()> {
         let db = &self.state.sea_db();
 
@@ -644,40 +540,33 @@ impl VmService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
 
-        // 使用 WebSocket RPC 调用 Agent 重启虚拟机
-        let request = VmOperationRequest {
-            vm_id: id.to_string(),
-            force: false,
-        };
-
-        let node_id = vm.node_id.as_ref()
+        // 通知 Agent 所需字段
+        let node_id = vm
+            .node_id
+            .clone()
             .ok_or_else(|| anyhow::anyhow!("虚拟机未关联节点"))?;
-        
-        let response_msg = self.state.agent_manager()
-            .call(
-                node_id,
-                "restart_vm",
-                serde_json::to_value(&request)?,
-                Duration::from_secs(60)
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
 
-        let result: VmOperationResponse = serde_json::from_value(
-            response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
-        )?;
+        let request = serde_json::json!({
+            "vm_id": id,
+            // 先走软关机，失败由 Agent 端自动执行强制关机
+            "force": false
+        });
 
-        if !result.success {
-            return Err(anyhow::anyhow!("重启虚拟机失败: {}", result.message));
-        }
-
-        // 更新数据库状态
+        // 更新数据库状态为"重启中"
         let now = Utc::now();
         let mut vm_active: VmActiveModel = vm.into();
-        vm_active.started_at = Set(Some(now.into()));
+        vm_active.status = Set("restarting".to_string());
         vm_active.updated_at = Set(now.into());
         vm_active.update(db).await?;
 
+        // 异步通知 Agent，不等待结果
+        self.state
+            .agent_manager()
+            .notify(&node_id, "restart_vm_async", request)
+            .await
+            .map_err(|e| anyhow::anyhow!("发送重启通知失败: {}", e))?;
+
+        info!("虚拟机 {} 重启通知已发送给 Agent", id);
         Ok(())
     }
 
@@ -769,6 +658,11 @@ impl VmService {
     }
 
     /// 附加存储卷到虚拟机
+    /// 
+    /// 按照 vms.md 流程：
+    /// API -> Server记录DB -> UI提示进行中
+    /// --(notify)-> agent 热挂载磁盘，并标记持久 --(notify)-> Server更新db记录 -> UI提示完成
+    /// 若虚拟机未开机，则不需要调用agent，仅更新db即可。开机会重新define。
     pub async fn attach_volume(&self, vm_id: &str, dto: AttachVolumeDto) -> anyhow::Result<()> {
         let db = &self.state.sea_db();
         let now = Utc::now();
@@ -793,84 +687,76 @@ impl VmService {
             return Err(anyhow::anyhow!("存储卷已被其他虚拟机使用"));
         }
 
-        // 获取存储卷路径
-        let volume_path = volume.path.clone()
-            .ok_or_else(|| anyhow::anyhow!("存储卷路径不存在"))?;
+        // 获取当前的磁盘列表
+        let mut disks: Vec<DiskSpec> = vm.volumes
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
 
-        // 调用 Agent 挂载存储卷到虚拟机
-        if let Some(node_id) = &vm.node_id {
-            let request = common::ws_rpc::AttachVolumeRequest {
-                vm_id: vm_id.to_string(),
-                volume_id: dto.volume_id.clone(),
-                volume_path: volume_path.clone(),
-                bus_type: dto.bus_type.clone().unwrap_or_default(),
-                device_type: dto.device_type.clone().unwrap_or_default(),
-                format: volume.volume_type.clone(),
-            };
-            
-            let response_msg = self.state.agent_manager()
-                .call(
-                    node_id,
-                    "attach_volume",
-                    serde_json::to_value(&request)?,
-                    Duration::from_secs(60)
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
+        // 添加新磁盘
+        disks.push(DiskSpec {
+            volume_id: dto.volume_id.clone(),
+            bus_type: dto.bus_type.clone().unwrap_or_default(),
+            device_type: dto.device_type.clone().unwrap_or_default(),
+        });
 
-            let result: common::ws_rpc::AttachVolumeResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
-            )?;
+        // 更新虚拟机的磁盘列表
+        let disks_json = serde_json::to_value(&disks)?;
+        // 在转换前保留运行状态与 node_id 以便后续热挂载通知
+        let vm_running = vm.status == VmStatus::Running.as_str();
+        let vm_node_id = vm.node_id.clone();
+        let mut vm_active: VmActiveModel = vm.into();
+        vm_active.volumes = Set(Some(disks_json));
+        vm_active.updated_at = Set(now.into());
+        vm_active.update(db).await?;
 
-            if !result.success {
-                return Err(anyhow::anyhow!("Agent 挂载存储卷失败: {}", result.message));
+        // 在转换前保留 volume 字段用于后续请求
+        let volume_path = volume.path.clone();
+        let volume_type = volume.volume_type.clone();
+        // 更新存储卷的vm_id
+        let mut volume_active: VolumeActiveModel = volume.into();
+        volume_active.vm_id = Set(Some(vm_id.to_string()));
+        volume_active.status = Set("in-use".to_string());
+        volume_active.updated_at = Set(now.into());
+        volume_active.update(db).await?;
+
+        // 如果虚拟机正在运行，通知 Agent 热挂载
+        if vm_running {
+            if let Some(node_id) = &vm_node_id {
+                let request = serde_json::json!({
+                    "vm_id": vm_id,
+                    "volume_id": dto.volume_id,
+                    "volume_path": volume_path,
+                    "bus_type": dto.bus_type.clone().unwrap_or_default(),
+                    "device_type": dto.device_type.clone().unwrap_or_default(),
+                    "format": volume_type
+                });
+
+                // 异步通知 Agent，不等待结果
+                self.state.agent_manager()
+                    .notify(
+                        node_id,
+                        "attach_volume_async",
+                        request,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("发送挂载通知失败: {}", e))?;
+
+                info!("虚拟机 {} 存储卷挂载通知已发送给 Agent", vm_id);
             }
-
-            // 获取生成的设备名（暂时不使用，但保留逻辑）
-            let _device = result.device.unwrap_or_else(|| {
-                // 如果没有返回设备名，根据现有磁盘数量生成
-                let disk_count = vm.disk_ids
-                    .as_ref()
-                    .and_then(|v| serde_json::from_value::<Vec<DiskSpec>>(v.clone()).ok())
-                    .map(|disks| disks.len())
-                    .unwrap_or(0);
-                format!("vd{}", (b'a' + disk_count as u8) as char)
-            });
-
-            // 获取当前的磁盘列表
-            let mut disks: Vec<DiskSpec> = vm.disk_ids
-                .as_ref()
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or_default();
-
-            // 添加新磁盘
-            disks.push(DiskSpec {
-                volume_id: dto.volume_id.clone(),
-                bus_type: dto.bus_type.clone().unwrap_or_default(),
-                device_type: dto.device_type.clone().unwrap_or_default(),
-            });
-
-            // 更新虚拟机的磁盘列表
-            let disks_json = serde_json::to_value(&disks)?;
-            let mut vm_active: VmActiveModel = vm.into();
-            vm_active.disk_ids = Set(Some(disks_json));
-            vm_active.updated_at = Set(now.into());
-            vm_active.update(db).await?;
-
-            // 更新存储卷的vm_id
-            let mut volume_active: VolumeActiveModel = volume.into();
-            volume_active.vm_id = Set(Some(vm_id.to_string()));
-            volume_active.status = Set("in-use".to_string());
-            volume_active.updated_at = Set(now.into());
-            volume_active.update(db).await?;
         } else {
-            return Err(anyhow::anyhow!("虚拟机未分配到节点"));
+            info!("虚拟机 {} 未运行，存储卷将在下次启动时自动挂载", vm_id);
         }
 
         Ok(())
     }
 
     /// 从虚拟机分离存储卷
+    /// 
+    /// 按照 vms.md 流程：
+    /// API -> Server记录DB -> UI提示进行中
+    /// --(notify)-> agent 热解除磁盘，并标记持久 --(notify)-> Server更新db记录 -> UI提示完成
+    /// 若虚拟机未开机，则不需要调用agent，仅更新db即可。开机会重新define。
     pub async fn detach_volume(&self, vm_id: &str, dto: DetachVolumeDto) -> anyhow::Result<()> {
         let db = &self.state.sea_db();
         let now = Utc::now();
@@ -881,9 +767,8 @@ impl VmService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
 
-
         // 获取当前的磁盘列表
-        let mut disks: Vec<DiskSpec> = vm.disk_ids
+        let mut disks: Vec<DiskSpec> = vm.volumes
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
@@ -896,65 +781,58 @@ impl VmService {
             tracing::warn!("⚠️ 存储卷未附加到此虚拟机，但继续执行分离操作以确保最终一致性: vm_id={}, volume_id={}", vm_id, dto.volume_id);
         }
 
-        // 调用 Agent 从虚拟机分离存储卷
-        if let Some(node_id) = &vm.node_id {
-            let request = common::ws_rpc::DetachVolumeRequest {
-                vm_id: vm_id.to_string(),
-                volume_id: dto.volume_id.clone(),
-            };
-            
-            // 尝试调用 Agent，即使失败也继续执行数据库更新（最终一致性）
-            match self.state.agent_manager()
-                .call(
-                    node_id,
-                    "detach_volume",
-                    serde_json::to_value(&request)?,
-                    Duration::from_secs(60)
-                )
-                .await
-            {
-                Ok(response_msg) => {
-                    if let Ok(result) = serde_json::from_value::<common::ws_rpc::DetachVolumeResponse>(
-                        response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
-                    ) {
-                        if !result.success {
-                            tracing::warn!("⚠️ Agent 分离存储卷失败，但继续执行数据库更新: {}", result.message);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("⚠️ WebSocket RPC 调用失败，但继续执行数据库更新以确保最终一致性: {}", e);
-                }
-            }
+        // 从磁盘列表中移除指定的磁盘
+        disks.retain(|d| d.volume_id != dto.volume_id);
 
-            // 从磁盘列表中移除指定的磁盘
-            disks.retain(|d| d.volume_id != dto.volume_id);
+        // 更新虚拟机的磁盘列表
+        let disks_json_opt = if disks.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_value(&disks)?)
+        };
 
-            // 更新虚拟机的磁盘列表
-            let disks_json = if disks.is_empty() {
-                serde_json::Value::Null
-            } else {
-                serde_json::to_value(&disks)?
-            };
-            
-            let mut vm_active: VmActiveModel = vm.into();
-            vm_active.disk_ids = Set(Some(disks_json));
-            vm_active.updated_at = Set(now.into());
-            vm_active.update(db).await?;
+        // 在转换前保留运行状态与 node_id 以便后续热分离通知
+        let vm_running = vm.status == VmStatus::Running.as_str();
+        let vm_node_id = vm.node_id.clone();
+        let mut vm_active: VmActiveModel = vm.into();
+        vm_active.volumes = Set(disks_json_opt);
+        vm_active.updated_at = Set(now.into());
+        vm_active.update(db).await?;
 
-            // 更新存储卷状态（允许存储卷不存在，实现最终一致性）
-            if let Some(volume) = VolumeEntity::find_by_id(&dto.volume_id).one(db).await? {
-                let mut volume_active: VolumeActiveModel = volume.into();
-                volume_active.vm_id = Set(None);
-                volume_active.status = Set("available".to_string());
-                volume_active.updated_at = Set(now.into());
-                volume_active.update(db).await?;
-                tracing::info!("✅ 存储卷状态已更新为可用: volume_id={}", dto.volume_id);
-            } else {
-                tracing::warn!("⚠️ 存储卷不存在，跳过状态更新: volume_id={}", dto.volume_id);
+        // 更新存储卷状态（允许存储卷不存在，实现最终一致性）
+        if let Some(volume) = VolumeEntity::find_by_id(&dto.volume_id).one(db).await? {
+            let mut volume_active: VolumeActiveModel = volume.into();
+            volume_active.vm_id = Set(None);
+            volume_active.status = Set("available".to_string());
+            volume_active.updated_at = Set(now.into());
+            volume_active.update(db).await?;
+            tracing::info!("✅ 存储卷状态已更新为可用: volume_id={}", dto.volume_id);
+        } else {
+            tracing::warn!("⚠️ 存储卷不存在，跳过状态更新: volume_id={}", dto.volume_id);
+        }
+
+        // 如果虚拟机正在运行，通知 Agent 热分离
+        if vm_running {
+            if let Some(node_id) = &vm_node_id {
+                let request = serde_json::json!({
+                    "vm_id": vm_id,
+                    "volume_id": dto.volume_id
+                });
+
+                // 异步通知 Agent，不等待结果
+                self.state.agent_manager()
+                    .notify(
+                        node_id,
+                        "detach_volume_async",
+                        request,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("发送分离通知失败: {}", e))?;
+
+                info!("虚拟机 {} 存储卷分离通知已发送给 Agent", vm_id);
             }
         } else {
-            return Err(anyhow::anyhow!("虚拟机未分配到节点"));
+            info!("虚拟机 {} 未运行，存储卷分离已完成", vm_id);
         }
 
         Ok(())
@@ -971,7 +849,7 @@ impl VmService {
             .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
 
         // 获取磁盘列表
-        let disks: Vec<DiskSpec> = vm.disk_ids
+        let disks: Vec<DiskSpec> = vm.volumes
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
@@ -1072,6 +950,77 @@ impl VmService {
         }
 
         Ok(result)
+    }
+
+    /// 处理 Agent 的虚拟机操作完成通知
+    pub async fn handle_vm_operation_completed(&self, vm_id: &str, operation: &str, success: bool, message: &str) -> anyhow::Result<()> {
+        let db = &self.state.sea_db();
+        let now = Utc::now();
+
+        // 查询 VM 信息
+        let vm = VmEntity::find_by_id(vm_id.to_string())
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
+
+        let mut vm_active: VmActiveModel = vm.into();
+
+        match operation {
+            "start_vm" => {
+                if success {
+                    vm_active.status = Set(VmStatus::Running.as_str().to_string());
+                    vm_active.started_at = Set(Some(now.into()));
+                    self.notify_vm_status_update(vm_id, "running", Some("虚拟机启动成功")).await;
+                } else {
+                    vm_active.status = Set(VmStatus::Stopped.as_str().to_string());
+                    self.notify_vm_status_update(vm_id, "stopped", Some(&format!("虚拟机启动失败: {}", message))).await;
+                }
+            }
+            "stop_vm" => {
+                if success {
+                    vm_active.status = Set(VmStatus::Stopped.as_str().to_string());
+                    vm_active.stopped_at = Set(Some(now.into()));
+                    self.notify_vm_status_update(vm_id, "stopped", Some("虚拟机停止成功")).await;
+                } else {
+                    // 停止失败，保持当前状态
+                    self.notify_vm_status_update(vm_id, "error", Some(&format!("虚拟机停止失败: {}", message))).await;
+                }
+            }
+            "restart_vm" => {
+                if success {
+                    vm_active.status = Set(VmStatus::Running.as_str().to_string());
+                    vm_active.started_at = Set(Some(now.into()));
+                    self.notify_vm_status_update(vm_id, "running", Some("虚拟机重启成功")).await;
+                } else {
+                    // 重启失败后状态取决于失败阶段，简化为 error
+                    vm_active.status = Set(VmStatus::Error.as_str().to_string());
+                    self.notify_vm_status_update(vm_id, "error", Some(&format!("虚拟机重启失败: {}", message))).await;
+                }
+            }
+            "attach_volume" => {
+                if success {
+                    self.notify_vm_status_update(vm_id, "running", Some("存储卷挂载成功")).await;
+                } else {
+                    self.notify_vm_status_update(vm_id, "error", Some(&format!("存储卷挂载失败: {}", message))).await;
+                }
+            }
+            "detach_volume" => {
+                if success {
+                    self.notify_vm_status_update(vm_id, "running", Some("存储卷分离成功")).await;
+                } else {
+                    self.notify_vm_status_update(vm_id, "error", Some(&format!("存储卷分离失败: {}", message))).await;
+                }
+            }
+            _ => {
+                warn!("未知的虚拟机操作: {}", operation);
+            }
+        }
+
+        vm_active.updated_at = Set(now.into());
+        vm_active.update(db).await?;
+
+        info!("虚拟机 {} 操作 {} 完成: success={}, message={}", vm_id, operation, success, message);
+        Ok(())
     }
 
     /// 生成 MAC 地址

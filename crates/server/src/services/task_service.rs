@@ -163,6 +163,8 @@ impl TaskService {
             ("stop_vm", false) => "error",
             ("start_vm", true) => "running",
             ("start_vm", false) => "error",
+            ("restart_vm", true) => "running",
+            ("restart_vm", false) => "error",
             _ => "error",
         };
 

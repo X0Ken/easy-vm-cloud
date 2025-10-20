@@ -249,7 +249,7 @@ pub async fn restart_vm(
 
     Ok(Json(serde_json::json!({
         "success": true,
-        "message": "虚拟机重启成功"
+        "message": "虚拟机重启中"
     })))
 }
 

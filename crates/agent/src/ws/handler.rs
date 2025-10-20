@@ -142,16 +142,6 @@ impl RpcHandlerRegistry {
             // 节点信息
             "get_node_info" => self.handle_get_node_info(payload).await,
             
-            // 虚拟机管理
-            "create_vm" => self.handle_create_vm(payload).await,
-            "start_vm" => self.handle_start_vm(payload).await,
-            "stop_vm" => self.handle_stop_vm(payload).await,
-            "stop_vm_async" => self.handle_stop_vm_async(payload).await,
-            "restart_vm" => self.handle_restart_vm(payload).await,
-            "delete_vm" => self.handle_delete_vm(payload).await,
-            "get_vm_info" => self.handle_get_vm_info(payload).await,
-            "list_vms" => self.handle_list_vms(payload).await,
-            
             // 存储管理
             "create_volume" => self.handle_create_volume(payload).await,
             "delete_volume" => self.handle_delete_volume(payload).await,
@@ -170,6 +160,7 @@ impl RpcHandlerRegistry {
             // 虚拟机存储卷管理
             "attach_volume" => self.handle_attach_volume(payload).await,
             "detach_volume" => self.handle_detach_volume(payload).await,
+            // 异步卷操作通过通知
             
             _ => {
                 return RpcMessage::error_response(
@@ -189,6 +180,35 @@ impl RpcHandlerRegistry {
                 err.message,
                 err.details,
             ),
+        }
+    }
+
+    /// 处理异步通知的统一入口
+    /// 
+    /// 根据通知的方法名路由到对应的处理逻辑
+    pub async fn handle_notification(&self, method: &str, payload: serde_json::Value) -> Result<(), RpcError> {
+        debug!("处理异步通知: method={}", method);
+        
+        match method {
+            "stop_vm_async" => {
+                self.handle_stop_vm_async_internal(payload).await
+            }
+            "start_vm_async" => {
+                self.handle_start_vm_async_internal(payload).await
+            }
+            "restart_vm_async" => {
+                self.handle_restart_vm_async_internal(payload).await
+            }
+            "attach_volume_async" => {
+                self.handle_attach_volume_async_internal(payload).await
+            }
+            "detach_volume_async" => {
+                self.handle_detach_volume_async_internal(payload).await
+            }
+            _ => {
+                debug!("未知的异步通知方法: {}", method);
+                Ok(())
+            }
         }
     }
 
@@ -217,43 +237,62 @@ impl RpcHandlerRegistry {
             .map_err(|e| RpcError::serialization_error(e))
     }
 
-    // ========================================================================
-    // 虚拟机管理处理
-    // ========================================================================
-
-    async fn handle_create_vm(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: CreateVmRequest = serde_json::from_value(payload)
+    /// 处理异步启动虚拟机（内部方法，用于通知处理）
+    async fn handle_start_vm_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+        let req: serde_json::Value = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        info!("创建虚拟机: {} (ID: {})", req.name, req.vm_id);
+        let vm_id = req.get("vm_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
 
-        // 转换为 VMConfig
-        let config = crate::hypervisor::VMConfig {
-            name: req.name.clone(),
-            uuid: req.vm_id.clone(),  // 使用传入的 vm_id 作为 UUID
-            vcpu: req.vcpu,
-            memory_mb: req.memory_mb,
-            os_type: req.os_type.unwrap_or_else(|| "linux".to_string()),  // 默认操作系统类型
-            disks: req.disks.iter().map(|d| crate::hypervisor::DiskConfig {
-                volume_id: d.volume_id.clone(),
-                volume_path: d.volume_path.clone(),
-                bus_type: d.bus_type.clone(),
-                device_type: d.device_type.clone(),
-                format: d.format.clone(),
-            }).collect(),
-            networks: req.networks.iter().map(|n| crate::hypervisor::NetworkConfig {
-                network_name: n.network_id.clone(),
-                bridge_name: n.bridge_name.clone(),
-                mac_address: Some(n.mac_address.clone()),
-                model: n.model.clone(),
-            }).collect(),
-        };
+        let name = req.get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 name 参数".to_string()))?;
+
+        let vcpu = req.get("vcpu")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| RpcError::invalid_params("缺少 vcpu 参数".to_string()))?;
+
+        let memory_mb = req.get("memory_mb")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| RpcError::invalid_params("缺少 memory_mb 参数".to_string()))?;
+
+        let os_type = req.get("os_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("linux");
+
+        info!("异步启动虚拟机: vm_id={}, name={}", vm_id, name);
+
+        // 解析磁盘配置
+        let mut volumes = Vec::new();
+        if let Some(volumes_json) = req.get("volumes") {
+            if let Ok(volumes_array) = serde_json::from_value::<Vec<serde_json::Value>>(volumes_json.clone()) {
+                for volume_json in volumes_array {
+                    if let Ok(volume) = serde_json::from_value::<crate::hypervisor::VolumeConfig>(volume_json) {
+                        volumes.push(volume);
+                    }
+                }
+            }
+        }
+
+        // 解析网络配置
+        let mut networks = Vec::new();
+        if let Some(networks_json) = req.get("networks") {
+            if let Ok(networks_array) = serde_json::from_value::<Vec<serde_json::Value>>(networks_json.clone()) {
+                for network_json in networks_array {
+                    if let Ok(network) = serde_json::from_value::<crate::hypervisor::NetworkConfig>(network_json) {
+                        networks.push(network);
+                    }
+                }
+            }
+        }
 
         // 确保网络配置：检查每个网络对应的 Bridge 是否存在，如果不存在则自动创建
-        for network_config in &req.networks {
-            if let Err(e) = self.ensure_network_bridge(&network_config.network_id, &network_config.bridge_name).await {
-                error!("网络配置失败: network_id={}, bridge={}, error={}", 
-                       network_config.network_id, network_config.bridge_name, e);
+        for network_config in &networks {
+            if let Err(e) = self.ensure_network_bridge(&network_config.network_name, &network_config.bridge_name).await {
+                error!("网络配置失败: network_id={}, bridge={}, error={}",
+                       network_config.network_name, network_config.bridge_name, e);
                 return Err(RpcError::new(
                     RpcErrorCode::NetworkError,
                     format!("网络配置失败: {}", e),
@@ -261,104 +300,36 @@ impl RpcHandlerRegistry {
             }
         }
 
-        match self.hypervisor.create_vm(&config).await {
-            Ok(vm_uuid) => {
-                let response = CreateVmResponse {
-                    success: true,
-                    message: "虚拟机创建成功".to_string(),
-                    vm_uuid: Some(vm_uuid),
-                };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
-            }
-            Err(e) => {
-                error!("创建虚拟机失败: {}", e);
-                Err(RpcError::new(
-                    RpcErrorCode::VmCreateFailed,
-                    format!("创建虚拟机失败: {}", e),
-                ))
-            }
-        }
-    }
+        // 构建虚拟机配置
+        let config = crate::hypervisor::VMConfig {
+            name: name.to_string(),
+            uuid: vm_id.to_string(),
+            vcpu: vcpu as u32,
+            memory_mb: memory_mb as u64,
+            os_type: os_type.to_string(),
+            volumes,
+            networks,
+        };
 
-    async fn handle_start_vm(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: VmOperationRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("启动虚拟机: {}", req.vm_id);
-
-        match self.hypervisor.start_vm(&req.vm_id).await {
-            Ok(_) => {
-                let response = VmOperationResponse {
-                    success: true,
-                    message: "虚拟机已启动".to_string(),
-                };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
-            }
-            Err(e) => {
-                error!("启动虚拟机失败: {}", e);
-                Err(RpcError::new(
-                    RpcErrorCode::VmStartFailed,
-                    format!("启动虚拟机失败: {}", e),
-                ))
-            }
-        }
-    }
-
-    async fn handle_stop_vm(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: VmOperationRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("停止虚拟机: {}", req.vm_id);
-
-        match self.hypervisor.stop_vm(&req.vm_id, req.force).await {
-            Ok(_) => {
-                let response = VmOperationResponse {
-                    success: true,
-                    message: "虚拟机已停止".to_string(),
-                };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
-            }
-            Err(e) => {
-                error!("停止虚拟机失败: {}", e);
-                Err(RpcError::new(
-                    RpcErrorCode::VmStopFailed,
-                    format!("停止虚拟机失败: {}", e),
-                ))
-            }
-        }
-    }
-
-    async fn handle_stop_vm_async(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: VmAsyncOperationRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("异步停止虚拟机: vm_id={}, task_id={}", req.vm_id, req.task_id);
-
-        // 异步执行停止操作，不等待结果
+        // 异步执行启动操作，不等待结果
         let hypervisor = self.hypervisor.clone();
-        let vm_id = req.vm_id.clone();
-        let task_id = req.task_id.clone();
-        let force = req.force;
+        let vm_id = vm_id.to_string();
         let notification_sender = self.notification_sender.clone();
         
         tokio::spawn(async move {
-            match hypervisor.stop_vm(&vm_id, force).await {
+            match hypervisor.start_vm_with_config(&vm_id, &config).await {
                 Ok(_) => {
-                    info!("虚拟机 {} 异步停止成功 (task_id: {})", vm_id, task_id);
+                    info!("虚拟机 {} 异步启动成功", vm_id);
                     
-                    // 发送成功通知到 Server，包含 task_id
+                    // 发送成功通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
                             "vm_operation_completed",
                             serde_json::json!({
                                 "vm_id": vm_id,
-                                "task_id": task_id,
-                                "operation": "stop_vm",
+                                "operation": "start_vm",
                                 "success": true,
-                                "message": "虚拟机停止成功"
+                                "message": "虚拟机启动成功"
                             }),
                         );
                         if let Err(e) = sender.send(notification) {
@@ -367,18 +338,17 @@ impl RpcHandlerRegistry {
                     }
                 }
                 Err(e) => {
-                    error!("虚拟机 {} 异步停止失败 (task_id: {}): {}", vm_id, task_id, e);
+                    error!("虚拟机 {} 异步启动失败: {}", vm_id, e);
                     
-                    // 发送失败通知到 Server，包含 task_id
+                    // 发送失败通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
                             "vm_operation_completed",
                             serde_json::json!({
                                 "vm_id": vm_id,
-                                "task_id": task_id,
-                                "operation": "stop_vm",
+                                "operation": "start_vm",
                                 "success": false,
-                                "message": format!("虚拟机停止失败: {}", e)
+                                "message": format!("虚拟机启动失败: {}", e)
                             }),
                         );
                         if let Err(e) = sender.send(notification) {
@@ -389,14 +359,7 @@ impl RpcHandlerRegistry {
             }
         });
 
-        // 立即返回成功响应，表示任务已提交
-        let response = VmAsyncOperationResponse {
-            success: true,
-            message: "停止任务已提交".to_string(),
-            task_id: req.task_id,
-        };
-        serde_json::to_value(&response)
-            .map_err(|e| RpcError::serialization_error(e))
+        Ok(())
     }
 
     /// 处理异步停止虚拟机（内部方法，用于通知处理）
@@ -404,27 +367,25 @@ impl RpcHandlerRegistry {
         let req: VmAsyncOperationRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        info!("处理异步停止虚拟机通知: vm_id={}, task_id={}", req.vm_id, req.task_id);
+        info!("处理异步停止虚拟机通知: vm_id={}", req.vm_id);
 
         // 异步执行停止操作，不等待结果
         let hypervisor = self.hypervisor.clone();
         let vm_id = req.vm_id.clone();
-        let task_id = req.task_id.clone();
         let force = req.force;
         let notification_sender = self.notification_sender.clone();
         
         tokio::spawn(async move {
             match hypervisor.stop_vm(&vm_id, force).await {
                 Ok(_) => {
-                    info!("虚拟机 {} 异步停止成功 (task_id: {})", vm_id, task_id);
+                    info!("虚拟机 {} 异步停止成功", vm_id);
                     
-                    // 发送成功通知到 Server，包含 task_id
+                    // 发送成功通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
                             "vm_operation_completed",
                             serde_json::json!({
                                 "vm_id": vm_id,
-                                "task_id": task_id,
                                 "operation": "stop_vm",
                                 "success": true,
                                 "message": "虚拟机停止成功"
@@ -436,15 +397,14 @@ impl RpcHandlerRegistry {
                     }
                 }
                 Err(e) => {
-                    error!("虚拟机 {} 异步停止失败 (task_id: {}): {}", vm_id, task_id, e);
+                    error!("虚拟机 {} 异步停止失败: {}", vm_id, e);
                     
-                    // 发送失败通知到 Server，包含 task_id
+                    // 发送失败通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
                             "vm_operation_completed",
                             serde_json::json!({
                                 "vm_id": vm_id,
-                                "task_id": task_id,
                                 "operation": "stop_vm",
                                 "success": false,
                                 "message": format!("虚拟机停止失败: {}", e)
@@ -462,135 +422,95 @@ impl RpcHandlerRegistry {
         Ok(())
     }
 
-    async fn handle_restart_vm(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: VmOperationRequest = serde_json::from_value(payload)
+    /// 处理异步重启虚拟机（内部方法，用于通知处理）
+    async fn handle_restart_vm_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+        let req: serde_json::Value = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        info!("重启虚拟机: {}", req.vm_id);
+        let vm_id = req.get("vm_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
 
-        // 先停止再启动
-        match self.hypervisor.stop_vm(&req.vm_id, req.force).await {
-            Ok(_) => {
-                // 等待一下
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                match self.hypervisor.start_vm(&req.vm_id).await {
-                    Ok(_) => {
-                        let response = VmOperationResponse {
-                            success: true,
-                            message: "虚拟机已重启".to_string(),
-                        };
-                        serde_json::to_value(&response)
-                            .map_err(|e| RpcError::serialization_error(e))
+        let force = req.get("force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        info!("异步重启虚拟机: vm_id={}, force={}", vm_id, force);
+
+        // 异步执行重启操作：优雅停止（失败则强制）+ 再启动
+        let hypervisor = self.hypervisor.clone();
+        let vm_id_string = vm_id.to_string();
+        let notification_sender = self.notification_sender.clone();
+
+        tokio::spawn(async move {
+            // 优雅停止
+            let stop_result = match hypervisor.stop_vm(&vm_id_string, force).await {
+                Ok(v) => Ok(v),
+                Err(_) => hypervisor.stop_vm(&vm_id_string, true).await,
+            };
+
+            match stop_result {
+                Ok(_) => {
+                    // 等2秒再启动
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    match hypervisor.start_vm(&vm_id_string).await {
+                        Ok(_) => {
+                            info!("虚拟机 {} 异步重启成功", vm_id_string);
+                            if let Some(sender) = notification_sender {
+                                let notification = RpcMessage::notification(
+                                    "vm_operation_completed",
+                                    serde_json::json!({
+                                        "vm_id": vm_id_string,
+                                        "operation": "restart_vm",
+                                        "success": true,
+                                        "message": "虚拟机重启成功"
+                                    }),
+                                );
+                                if let Err(e) = sender.send(notification) {
+                                    error!("发送重启完成通知失败: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("虚拟机 {} 启动失败(重启流程): {}", vm_id_string, e);
+                            if let Some(sender) = notification_sender {
+                                let notification = RpcMessage::notification(
+                                    "vm_operation_completed",
+                                    serde_json::json!({
+                                        "vm_id": vm_id_string,
+                                        "operation": "restart_vm",
+                                        "success": false,
+                                        "message": format!("虚拟机重启失败(启动阶段): {}", e)
+                                    }),
+                                );
+                                if let Err(e) = sender.send(notification) {
+                                    error!("发送重启失败通知失败: {}", e);
+                                }
+                            }
+                        }
                     }
-                    Err(e) => {
-                        error!("启动虚拟机失败: {}", e);
-                        Err(RpcError::new(
-                            RpcErrorCode::VmOperationFailed,
-                            format!("重启虚拟机失败（启动阶段）: {}", e),
-                        ))
+                }
+                Err(e) => {
+                    error!("虚拟机 {} 停止失败(重启流程): {}", vm_id_string, e);
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "vm_operation_completed",
+                            serde_json::json!({
+                                "vm_id": vm_id_string,
+                                "operation": "restart_vm",
+                                "success": false,
+                                "message": format!("虚拟机重启失败(停止阶段): {}", e)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送重启失败通知失败: {}", e);
+                        }
                     }
                 }
             }
-            Err(e) => {
-                error!("停止虚拟机失败: {}", e);
-                Err(RpcError::new(
-                    RpcErrorCode::VmOperationFailed,
-                    format!("重启虚拟机失败（停止阶段）: {}", e),
-                ))
-            }
-        }
-    }
+        });
 
-    async fn handle_delete_vm(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: VmOperationRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("删除虚拟机: {}", req.vm_id);
-
-        match self.hypervisor.delete_vm(&req.vm_id).await {
-            Ok(_) => {
-                let response = VmOperationResponse {
-                    success: true,
-                    message: "虚拟机已删除".to_string(),
-                };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
-            }
-            Err(e) => {
-                error!("删除虚拟机失败: {}", e);
-                Err(RpcError::new(
-                    RpcErrorCode::VmDeleteFailed,
-                    format!("删除虚拟机失败: {}", e),
-                ))
-            }
-        }
-    }
-
-    async fn handle_get_vm_info(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let req: VmOperationRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("获取虚拟机信息: {}", req.vm_id);
-
-        // 从虚拟机列表中查找
-        match self.hypervisor.list_vms().await {
-            Ok(vms) => {
-                if let Some(vm_info) = vms.iter().find(|v| v.id == req.vm_id) {
-                    // 转换为 VmInfo（简化版本，实际应该从 libvirt 获取完整信息）
-                    let vm = VmInfo {
-                        vm_id: vm_info.id.clone(),
-                        uuid: vm_info.id.clone(), // 临时使用 id 作为 uuid
-                        name: vm_info.name.clone(),
-                        state: vm_info.state.clone(),
-                        vcpu: 0, // TODO: 从 libvirt 获取
-                        memory_mb: 0, // TODO: 从 libvirt 获取
-                        disks: vec![],
-                        networks: vec![],
-                        usage: None,
-                    };
-                    serde_json::to_value(&vm)
-                        .map_err(|e| RpcError::serialization_error(e))
-                } else {
-                    Err(RpcError::vm_not_found(&req.vm_id))
-                }
-            }
-            Err(e) => {
-                error!("获取虚拟机信息失败: {}", e);
-                Err(RpcError::vm_not_found(&req.vm_id))
-            }
-        }
-    }
-
-    async fn handle_list_vms(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let _req: ListVmsRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("列出所有虚拟机");
-
-        match self.hypervisor.list_vms().await {
-            Ok(vm_list) => {
-                // 转换为 VmInfo（简化版本）
-                let vms: Vec<VmInfo> = vm_list.iter().map(|vm_info| VmInfo {
-                    vm_id: vm_info.id.clone(),
-                    uuid: vm_info.id.clone(), // 临时使用 id 作为 uuid
-                    name: vm_info.name.clone(),
-                    state: vm_info.state.clone(),
-                    vcpu: 0, // TODO: 从 libvirt 获取
-                    memory_mb: 0, // TODO: 从 libvirt 获取
-                    disks: vec![],
-                    networks: vec![],
-                    usage: None,
-                }).collect();
-                
-                let response = ListVmsResponse { vms };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
-            }
-            Err(e) => {
-                error!("列出虚拟机失败: {}", e);
-                Err(RpcError::internal_error(format!("列出虚拟机失败: {}", e)))
-            }
-        }
+        Ok(())
     }
 
     // ========================================================================
@@ -1106,6 +1026,181 @@ impl RpcHandlerRegistry {
                 ))
             }
         }
+    }
+
+    /// 处理异步挂载存储卷（内部方法，用于通知处理）
+    async fn handle_attach_volume_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+        let req: serde_json::Value = serde_json::from_value(payload)
+            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
+
+        let vm_id = req.get("vm_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
+
+        let volume_id = req.get("volume_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?;
+
+        let volume_path = req.get("volume_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 volume_path 参数".to_string()))?;
+
+        let bus_type = req.get("bus_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("virtio");
+
+        let device_type = req.get("device_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("disk");
+
+        let format = req.get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("qcow2");
+
+        info!("异步挂载存储卷: vm_id={}, volume_id={}", vm_id, volume_id);
+
+        // 异步执行挂载操作，不等待结果
+        let hypervisor = self.hypervisor.clone();
+        let vm_id = vm_id.to_string();
+        let volume_id = volume_id.to_string();
+        let volume_path = volume_path.to_string();
+        let bus_type = bus_type.to_string();
+        let device_type = device_type.to_string();
+        let format = format.to_string();
+        let notification_sender = self.notification_sender.clone();
+        
+        tokio::spawn(async move {
+            // 转换字符串为枚举类型
+            let bus_type_enum = match bus_type.as_str() {
+                "virtio" => DiskBusType::Virtio,
+                "scsi" => DiskBusType::Scsi,
+                "ide" => DiskBusType::Ide,
+                _ => DiskBusType::Virtio,
+            };
+
+            let device_type_enum = match device_type.as_str() {
+                "disk" => DiskDeviceType::Disk,
+                "cdrom" => DiskDeviceType::Cdrom,
+                _ => DiskDeviceType::Disk,
+            };
+
+            match hypervisor.attach_volume(
+                &vm_id,
+                &volume_id,
+                &volume_path,
+                bus_type_enum,
+                device_type_enum,
+                &format,
+            ).await {
+                Ok(_) => {
+                    info!("虚拟机 {} 存储卷 {} 异步挂载成功", vm_id, volume_id);
+                    
+                    // 发送成功通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "vm_operation_completed",
+                            serde_json::json!({
+                                "vm_id": vm_id,
+                                "operation": "attach_volume",
+                                "success": true,
+                                "message": "存储卷挂载成功"
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送完成通知失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("虚拟机 {} 存储卷 {} 异步挂载失败: {}", vm_id, volume_id, e);
+                    
+                    // 发送失败通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "vm_operation_completed",
+                            serde_json::json!({
+                                "vm_id": vm_id,
+                                "operation": "attach_volume",
+                                "success": false,
+                                "message": format!("存储卷挂载失败: {}", e)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送失败通知失败: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// 处理异步分离存储卷（内部方法，用于通知处理）
+    async fn handle_detach_volume_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+        let req: serde_json::Value = serde_json::from_value(payload)
+            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
+
+        let vm_id = req.get("vm_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
+
+        let volume_id = req.get("volume_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?;
+
+        info!("异步分离存储卷: vm_id={}, volume_id={}", vm_id, volume_id);
+
+        // 异步执行分离操作，不等待结果
+        let hypervisor = self.hypervisor.clone();
+        let vm_id = vm_id.to_string();
+        let volume_id = volume_id.to_string();
+        let notification_sender = self.notification_sender.clone();
+        
+        tokio::spawn(async move {
+            match hypervisor.detach_volume(&vm_id, &volume_id).await {
+                Ok(_) => {
+                    info!("虚拟机 {} 存储卷 {} 异步分离成功", vm_id, volume_id);
+                    
+                    // 发送成功通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "vm_operation_completed",
+                            serde_json::json!({
+                                "vm_id": vm_id,
+                                "operation": "detach_volume",
+                                "success": true,
+                                "message": "存储卷分离成功"
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送完成通知失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("虚拟机 {} 存储卷 {} 异步分离失败: {}", vm_id, volume_id, e);
+                    
+                    // 发送失败通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "vm_operation_completed",
+                            serde_json::json!({
+                                "vm_id": vm_id,
+                                "operation": "detach_volume",
+                                "success": false,
+                                "message": format!("存储卷分离失败: {}", e)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送失败通知失败: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
     }
 }
 

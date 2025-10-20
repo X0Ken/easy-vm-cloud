@@ -356,11 +356,6 @@ async fn handle_vm_operation_completed(
         .ok_or("缺少 vm_id")?
         .to_string();
     
-    let task_id: String = payload.get("task_id")
-        .and_then(|v| v.as_str())
-        .ok_or("缺少 task_id")?
-        .to_string();
-    
     let operation: String = payload.get("operation")
         .and_then(|v| v.as_str())
         .ok_or("缺少 operation")?
@@ -375,31 +370,18 @@ async fn handle_vm_operation_completed(
         .unwrap_or("")
         .to_string();
 
-    info!("虚拟机操作完成: vm_id={}, task_id={}, operation={}, success={}, message={}", 
-          vm_id, task_id, operation, success, message);
+    info!("虚拟机操作完成: vm_id={}, operation={}, success={}, message={}", 
+          vm_id, operation, success, message);
 
-    // 使用任务服务更新状态
-    let task_service = crate::services::task_service::TaskService::new(state.clone());
+    // 使用虚拟机服务处理操作完成通知
+    let vm_service = crate::services::vm_service::VmService::new(state.clone());
     
-    match task_service.handle_vm_operation_completed_by_task_id(
-        &task_id,
-        &vm_id,
-        &operation,
-        success,
-        &message,
-    ).await {
-        Ok(_) => {
-            if success {
-                info!("虚拟机 {} 操作成功 (task_id: {}): {}", vm_id, task_id, message);
-            } else {
-                error!("虚拟机 {} 操作失败 (task_id: {}): {}", vm_id, task_id, message);
-            }
-        }
-        Err(e) => {
-            error!("更新任务状态失败 (task_id: {}): {}", task_id, e);
-        }
+    if let Err(e) = vm_service.handle_vm_operation_completed(&vm_id, &operation, success, &message).await {
+        error!("处理虚拟机操作完成通知失败: {}", e);
+        return Err(format!("处理虚拟机操作完成通知失败: {}", e));
     }
 
+    info!("虚拟机操作完成通知处理成功: vm_id={}, operation={}", vm_id, operation);
     Ok(())
 }
 

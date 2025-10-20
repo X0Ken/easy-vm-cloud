@@ -22,7 +22,7 @@ pub struct Model {
     pub os_type: String,  // 操作系统类型: linux, windows
     
     // 磁盘和网络配置 (JSON)
-    pub disk_ids: Option<JsonValue>,
+    pub volumes: Option<JsonValue>,
     pub network_interfaces: Option<JsonValue>,
     
     // 元数据
@@ -117,7 +117,7 @@ pub struct VmResponse {
     pub vcpu: i32,
     pub memory_mb: i64,
     pub os_type: String,  // 操作系统类型
-    pub disk_ids: Option<JsonValue>,
+    pub volumes: Option<JsonValue>,
     pub network_interfaces: Option<JsonValue>,
     pub metadata: Option<JsonValue>,
     pub created_at: String,
@@ -138,7 +138,7 @@ impl From<Vm> for VmResponse {
             vcpu: vm.vcpu,
             memory_mb: vm.memory_mb,
             os_type: vm.os_type,
-            disk_ids: vm.disk_ids,
+            volumes: vm.volumes,
             network_interfaces: vm.network_interfaces,
             metadata: vm.metadata,
             created_at: vm.created_at.to_rfc3339(),

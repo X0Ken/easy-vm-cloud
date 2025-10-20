@@ -166,6 +166,7 @@
               [ngModelOptions]="{standalone: true}"
               name="node_id"
               nzAllowClear
+              [nzDisabled]="isEditingRunningVm"
             >
               <nz-option 
                 *ngFor="let node of nodes" 
@@ -188,6 +189,7 @@
               [nzStep]="1"
               nzPlaceHolder="请输入CPU核数"
               style="width: 100%"
+              [nzDisabled]="isEditingRunningVm"
             ></nz-input-number>
           </nz-form-control>
         </nz-form-item>
@@ -204,6 +206,7 @@
               [nzStep]="512"
               nzPlaceHolder="请输入内存大小"
               style="width: 100%"
+              [nzDisabled]="isEditingRunningVm"
             ></nz-input-number>
           </nz-form-control>
         </nz-form-item>
@@ -217,6 +220,7 @@
               [ngModelOptions]="{standalone: true}"
               name="os_type"
               nzAllowClear
+              [nzDisabled]="isEditingRunningVm"
             >
               <nz-option nzValue="linux" nzLabel="Linux"></nz-option>
               <nz-option nzValue="windows" nzLabel="Windows"></nz-option>

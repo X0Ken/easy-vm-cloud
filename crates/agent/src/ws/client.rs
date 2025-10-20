@@ -2,7 +2,7 @@
 /// 
 /// Agent 连接到 Server 的 WebSocket 客户端
 
-use common::ws_rpc::{RpcMessage, RegisterRequest, NodeResourceInfo};
+use common::ws_rpc::{RpcMessage, RegisterRequest};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,6 +11,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
 use super::handler::RpcHandlerRegistry;
+use crate::node::NodeManager;
 
 /// WebSocket 客户端状态
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,10 +28,8 @@ pub struct WsClient {
     /// Server 地址
     server_url: String,
     
-    /// 节点配置
-    node_id: String,
-    hostname: String,
-    ip_address: String,
+    /// 节点管理器
+    node_manager: NodeManager,
     
     /// 客户端状态
     state: Arc<RwLock<ClientState>>,
@@ -55,16 +54,12 @@ impl WsClient {
     /// 创建新的 WebSocket 客户端
     pub fn new(
         server_url: impl Into<String>,
-        node_id: impl Into<String>,
-        hostname: impl Into<String>,
-        ip_address: impl Into<String>,
+        node_manager: NodeManager,
         handler_registry: Arc<RwLock<RpcHandlerRegistry>>,
     ) -> Self {
         Self {
             server_url: server_url.into(),
-            node_id: node_id.into(),
-            hostname: hostname.into(),
-            ip_address: ip_address.into(),
+            node_manager,
             state: Arc::new(RwLock::new(ClientState::Disconnected)),
             handler_registry,
             reconnect_interval: 5,
@@ -124,10 +119,11 @@ impl WsClient {
         let (tx, mut rx) = mpsc::unbounded_channel::<RpcMessage>();
 
         // 发送注册请求
+        let node_info = self.node_manager.get_node_basic_info();
         let register_req = RegisterRequest {
-            node_id: self.node_id.clone(),
-            hostname: self.hostname.clone(),
-            ip_address: self.ip_address.clone(),
+            node_id: node_info.node_id.clone(),
+            hostname: node_info.hostname.clone(),
+            ip_address: node_info.ip_address.clone(),
         };
         
         let register_msg = RpcMessage::request(
@@ -359,17 +355,18 @@ impl WsClient {
                 // 处理通知（不需要响应）
                 debug!("收到通知: {:?}", rpc_msg.method);
                 
-                // 处理异步操作通知
-                if let Some(method) = &rpc_msg.method {
-                    match method.as_str() {
-                        "stop_vm_async" => {
-                            // 处理异步停止虚拟机通知
-                            Self::handle_async_notification(rpc_msg, handler_registry, tx).await;
-                        }
-                        _ => {
-                            debug!("收到其他通知: {}", method);
-                        }
+                // 与 Request 保持一致：直接调用注册表处理通知
+                let method = match &rpc_msg.method {
+                    Some(m) => m.clone(),
+                    None => {
+                        error!("通知缺少方法名");
+                        return;
                     }
+                };
+                let payload = rpc_msg.payload.clone().unwrap_or(serde_json::Value::Null);
+                let registry = handler_registry.read().await;
+                if let Err(e) = registry.handle_notification(&method, payload).await {
+                    error!("处理通知失败: method={}, error={}", method, e);
                 }
             }
             _ => {
@@ -486,104 +483,12 @@ impl WsClient {
         self.call_server_rpc("get_storage_pool_info", payload, Some(Duration::from_secs(10))).await
     }
 
-    /// 处理异步通知
-    async fn handle_async_notification(
-        msg: RpcMessage,
-        handler_registry: &Arc<RwLock<RpcHandlerRegistry>>,
-        tx: &mpsc::UnboundedSender<RpcMessage>,
-    ) {
-        let method = match &msg.method {
-            Some(m) => m,
-            None => {
-                error!("异步通知缺少方法名");
-                return;
-            }
-        };
-
-        let payload = msg.payload.clone().unwrap_or(serde_json::Value::Null);
-
-        // 根据方法名处理不同的异步通知
-        match method.as_str() {
-            "stop_vm_async" => {
-                debug!("处理异步停止虚拟机通知");
-                let registry = handler_registry.read().await;
-                
-                // 调用处理器中的异步停止方法
-                match registry.handle_stop_vm_async_internal(payload).await {
-                    Ok(_) => {
-                        debug!("异步停止虚拟机通知处理完成");
-                    }
-                    Err(e) => {
-                        error!("处理异步停止虚拟机失败: {}", e);
-                    }
-                }
-            }
-            _ => {
-                debug!("未知的异步通知方法: {}", method);
-            }
-        }
-    }
-
-    /// 获取系统资源信息
-    fn get_system_resource_info(&self) -> Result<NodeResourceInfo, Box<dyn std::error::Error + Send + Sync>> {
-        use sysinfo::{System, Disks};
-        
-        let mut sys = System::new_all();
-        sys.refresh_all();
-        
-        // 获取 CPU 信息
-        let cpu_cores = sys.cpus().len() as u32;
-        let cpu_threads = sys.cpus().len() as u32;
-        
-        // 获取内存信息
-        let memory_total = sys.total_memory() * 1024; // 转换为字节
-        
-        // 获取磁盘信息
-        let disks = Disks::new_with_refreshed_list();
-        let disk_total = disks.list().iter()
-            .map(|disk| disk.total_space())
-            .sum();
-        
-        // 获取虚拟化信息（简化实现）
-        let hypervisor_type = self.detect_hypervisor_type();
-        let hypervisor_version = self.detect_hypervisor_version();
-        
-        Ok(NodeResourceInfo {
-            node_id: self.node_id.clone(),
-            cpu_cores,
-            cpu_threads,
-            memory_total,
-            disk_total,
-            hypervisor_type: Some(hypervisor_type),
-            hypervisor_version: Some(hypervisor_version),
-            timestamp: chrono::Utc::now().timestamp(),
-        })
-    }
-
-    /// 检测虚拟化类型
-    fn detect_hypervisor_type(&self) -> String {
-        // 简化实现，实际应该检测系统虚拟化能力
-        if std::path::Path::new("/dev/kvm").exists() {
-            "kvm".to_string()
-        } else if std::path::Path::new("/usr/bin/qemu-system-x86_64").exists() {
-            "qemu".to_string()
-        } else {
-            "unknown".to_string()
-        }
-    }
-
-    /// 检测虚拟化版本
-    fn detect_hypervisor_version(&self) -> String {
-        // 简化实现，实际应该执行命令获取版本
-        "unknown".to_string()
-    }
-
     /// 发送节点资源信息
     async fn send_node_resource_info(
         &self,
         tx: &mpsc::UnboundedSender<RpcMessage>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let resource_info = self.get_system_resource_info()?;
+        let resource_info = self.node_manager.get_system_resource_info()?;
         
         let resource_msg = RpcMessage::notification(
             "node_resource_info",

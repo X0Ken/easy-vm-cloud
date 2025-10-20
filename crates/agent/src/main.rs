@@ -10,10 +10,12 @@ mod config;
 mod hypervisor;
 mod metrics;
 mod network;
+mod node;
 mod storage;
 mod ws;
 
 use ws::{WsClient, RpcHandlerRegistry};
+use node::NodeManager;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -63,8 +65,7 @@ async fn main() -> anyhow::Result<()> {
     )));
     info!("✅ RPC 处理器已初始化");
 
-    // 创建 WebSocket 客户端
-    let node_id = cfg.node_id.clone();
+    // 创建节点管理器
     let hostname = hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())
@@ -74,16 +75,21 @@ async fn main() -> anyhow::Result<()> {
     let ip_address = std::env::var("NODE_IP")
         .unwrap_or_else(|_| "127.0.0.1".to_string());
 
-    let ws_client = WsClient::new(
-        cfg.server_ws_url.clone(),
-        node_id.clone(),
+    let node_manager = NodeManager::new(
+        cfg.node_id.clone(),
         hostname,
         ip_address,
+    );
+
+    // 创建 WebSocket 客户端
+    let ws_client = WsClient::new(
+        cfg.server_ws_url.clone(),
+        node_manager,
         handler_registry,
     );
 
     info!("🎯 连接到 Server: {}", cfg.server_ws_url);
-    info!("📌 节点 ID: {}", node_id);
+    info!("📌 节点 ID: {}", cfg.node_id);
 
     // 运行 WebSocket 客户端（会自动重连）
     ws_client.run().await.map_err(|e| anyhow::anyhow!("{}", e))?;

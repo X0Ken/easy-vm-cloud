@@ -143,7 +143,6 @@ pub struct VmOperationResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmAsyncOperationRequest {
     pub vm_id: String,
-    pub task_id: String,
     #[serde(default)]
     pub force: bool,
 }
@@ -152,7 +151,6 @@ pub struct VmAsyncOperationRequest {
 pub struct VmAsyncOperationResponse {
     pub success: bool,
     pub message: String,
-    pub task_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
