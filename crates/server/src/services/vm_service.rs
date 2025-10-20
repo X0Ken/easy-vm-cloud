@@ -618,38 +618,7 @@ impl VmService {
         Ok(())
     }
 
-    /// 获取指定节点上的虚拟机列表
-    pub async fn list_vms_by_node(&self, node_id: &str) -> anyhow::Result<Vec<VmResponse>> {
-        let vms = VmEntity::find()
-            .filter(VmColumn::NodeId.eq(node_id))
-            .order_by_desc(VmColumn::CreatedAt)
-            .all(&self.state.sea_db())
-            .await?;
-
-        let mut responses = Vec::new();
-        for vm in vms {
-            responses.push(self.vm_to_response(vm).await);
-        }
-        Ok(responses)
-    }
-
-    /// 更新虚拟机状态
-    pub async fn update_vm_status(&self, id: &str, status: VmStatus) -> anyhow::Result<()> {
-        let db = &self.state.sea_db();
-        let now = Utc::now();
-        
-        let vm = VmEntity::find_by_id(id.to_string())
-            .one(db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
-
-        let mut vm_active: VmActiveModel = vm.into();
-        vm_active.status = Set(status.as_str().to_string());
-        vm_active.updated_at = Set(now.into());
-        vm_active.update(db).await?;
-
-        Ok(())
-    }
+    
 
     /// 附加存储卷到虚拟机
     /// 
