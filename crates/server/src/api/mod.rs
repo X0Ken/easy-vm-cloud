@@ -19,7 +19,6 @@ use crate::{
     app_state::AppState,
     middleware::auth_middleware,
 };
-use sea_orm::DatabaseConnection;
 
 /// 所有 API 路由（统一入口）
 pub fn api_routes() -> Router<AppState> {

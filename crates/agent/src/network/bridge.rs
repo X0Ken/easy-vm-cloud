@@ -9,7 +9,7 @@
 
 use common::Result;
 use std::process::Command;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 pub struct LinuxBridge {
     /// Provider 网络接口（例如：eth0）

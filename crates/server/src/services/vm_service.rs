@@ -11,17 +11,11 @@ use crate::db::models::vm::{
 };
 use crate::db::models::volume::{Entity as VolumeEntity, Column as VolumeColumn, ActiveModel as VolumeActiveModel};
 use crate::db::models::network::{Entity as NetworkEntity};
-use crate::db::models::task::{ActiveModel as TaskActiveModel};
 use crate::db::models::node::{Entity as NodeEntity};
 use crate::app_state::AppState;
 use crate::services::network_service::NetworkService;
 use crate::ws::FrontendMessage;
-use common::ws_rpc::{
-    VmOperationRequest, CreateVmRequest, DiskSpec as ProtoDiskSpec, 
-    NetworkInterfaceSpec as ProtoNetworkInterfaceSpec, CreateVmResponse, VmOperationResponse
-};
 use tracing::{info, warn, error};
-use std::time::Duration;
 
 pub struct VmService {
     state: AppState,

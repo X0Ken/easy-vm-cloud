@@ -2,10 +2,10 @@
 
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-use tracing::{info, error};
+use tracing::info;
 
 use crate::db::models::task::{Entity as TaskEntity, Column as TaskColumn, ActiveModel as TaskActiveModel};
-use crate::db::models::vm::{Entity as VmEntity, Column as VmColumn, ActiveModel as VmActiveModel};
+use crate::db::models::vm::{Entity as VmEntity, ActiveModel as VmActiveModel};
 use crate::app_state::AppState;
 use crate::ws::FrontendMessage;
 

@@ -6,7 +6,5 @@ pub mod driver;
 pub mod manager;
 pub mod nfs;
 
-pub use driver::{StorageDriver, StoragePoolConfig, VolumeInfo};
 pub use manager::StorageManager;
-pub use nfs::NfsDriver;
 

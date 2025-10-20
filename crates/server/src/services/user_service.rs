@@ -109,7 +109,7 @@ mod tests {
                 id: i as i32 + 1,
                 username: format!("user_{}", i),
                 email: format!("user{}@test.com", i),
-                password_hash: hash.to_string(),
+                password_hash: (*hash).to_owned(),
                 is_active: true,
                 created_at: chrono::Utc::now().into(),
                 updated_at: chrono::Utc::now().into(),
@@ -156,7 +156,7 @@ mod tests {
             let user = Model {
                 id: i as i32 + 1,
                 username: format!("user_{}", i),
-                email: email.to_string(),
+                email: (*email).to_owned(),
                 password_hash: "test_hash".to_string(),
                 is_active: true,
                 created_at: chrono::Utc::now().into(),
@@ -185,7 +185,7 @@ mod tests {
         for (i, username) in usernames.iter().enumerate() {
             let user = Model {
                 id: i as i32 + 1,
-                username: username.to_string(),
+                username: (*username).to_owned(),
                 email: format!("{}@test.com", i),
                 password_hash: "test_hash".to_string(),
                 is_active: true,

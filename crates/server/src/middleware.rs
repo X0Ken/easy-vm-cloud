@@ -6,7 +6,7 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::auth::{AuthService, Claims, RbacService};
+use crate::auth::{AuthService, Claims};
 
 pub async fn auth_middleware(
     mut request: Request,
@@ -100,11 +100,7 @@ pub fn require_permission(resource: &'static str, action: &'static str) -> impl 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode, header},
-        response::Response,
-    };
+    use axum::http::StatusCode;
     use serde_json::json;
     use crate::auth::Claims;
 

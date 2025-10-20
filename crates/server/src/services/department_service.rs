@@ -8,8 +8,7 @@ pub struct DepartmentService;
 impl DepartmentService {
     /// 创建部门
     pub async fn create_department(db: &DatabaseConnection, dto: CreateDepartmentDto) -> Result<Model> {
-                let db = db;
-
+        
         // 检查部门编码是否已存在
         let existing = Entity::find()
             .filter(Column::Code.eq(&dto.code))
@@ -60,7 +59,7 @@ impl DepartmentService {
 
     /// 更新部门
     pub async fn update_department(db: &DatabaseConnection, id: i32, dto: UpdateDepartmentDto) -> Result<Model> {
-        let db = db;
+        
 
         let department = Entity::find_by_id(id)
             .one(db)
@@ -138,7 +137,7 @@ impl DepartmentService {
 
     /// 删除部门
     pub async fn delete_department(db: &DatabaseConnection, id: i32) -> Result<bool> {
-        let db = db;
+        
 
         // 检查是否有子部门
         let children = Entity::find()
@@ -165,14 +164,14 @@ impl DepartmentService {
 
     /// 获取部门详情
     pub async fn get_department(db: &DatabaseConnection, id: i32) -> Result<Option<Model>> {
-        let db = db;
+        
         let department = Entity::find_by_id(id).one(db).await?;
         Ok(department)
     }
 
     /// 获取部门列表
     pub async fn list_departments(db: &DatabaseConnection) -> Result<Vec<Model>> {
-        let db = db;
+        
         let departments = Entity::find()
             .order_by(Column::SortOrder, Order::Asc)
             .order_by(Column::Id, Order::Asc)

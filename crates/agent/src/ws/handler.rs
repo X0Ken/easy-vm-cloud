@@ -5,7 +5,7 @@
 use common::ws_rpc::{RpcMessage, RpcError, RpcErrorCode};
 use common::ws_rpc::types::*;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use tokio::sync::mpsc;
 
 use crate::hypervisor::{HypervisorManager, DiskBusType, DiskDeviceType};

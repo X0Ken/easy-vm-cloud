@@ -3,22 +3,19 @@
 use chrono::Utc;
 use uuid::Uuid;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 use std::net::Ipv4Addr;
-use std::time::Duration;
 
 use crate::db::models::network::{
     CreateNetworkDto, UpdateNetworkDto, NetworkListResponse, NetworkResponse,
     Entity as NetworkEntity, Column as NetworkColumn, ActiveModel as NetworkActiveModel,
 };
 use crate::db::models::ip_allocation::{
-    CreateIpAllocationDto, IpAllocationListResponse, IpAllocationResponse, IpAllocationStatus,
+    IpAllocationListResponse, IpAllocationResponse, IpAllocationStatus,
     Entity as IpAllocationEntity, Column as IpAllocationColumn, ActiveModel as IpAllocationActiveModel,
 };
-use crate::db::models::node::{Entity as NodeEntity};
-use crate::db::models::vm::{Entity as VmEntity, Column as VmColumn};
+use crate::db::models::vm::Entity as VmEntity;
 use crate::app_state::AppState;
-use common::ws_rpc::{CreateNetworkRequest, DeleteNetworkRequest, CreateNetworkResponse, DeleteNetworkResponse};
 
 pub struct NetworkService {
     state: AppState,

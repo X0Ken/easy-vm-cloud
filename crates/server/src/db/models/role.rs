@@ -234,7 +234,7 @@ mod tests {
                 name: role_name.to_string(),
                 description: Some(format!("{}角色", role_name)),
                 is_active: true,
-                permissions: permissions.iter().map(|p| p.to_string()).collect(),
+                permissions: permissions.iter().map(|p| (*p).to_owned()).collect(),
             };
 
             // 业务验证：角色权限数量合理

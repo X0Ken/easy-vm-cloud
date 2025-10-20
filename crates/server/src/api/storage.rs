@@ -10,8 +10,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
-use crate::db::models::storage_pool::{CreateStoragePoolDto, UpdateStoragePoolDto, StoragePoolListResponse, StoragePoolResponse};
-use crate::db::models::volume::{CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, CloneVolumeDto, VolumeListResponse, VolumeResponse};
+use crate::db::models::storage_pool::{CreateStoragePoolDto, UpdateStoragePoolDto};
+use crate::db::models::volume::{CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, CloneVolumeDto};
 use crate::services::storage_service::StorageService;
 
 /// API 错误响应

@@ -14,7 +14,6 @@ mod utils;
 mod ws;
 
 use axum::{
-    middleware::from_fn,
     routing::get,
     Router,
 };
@@ -28,7 +27,6 @@ use crate::{
     app_state::AppState,
     db::establish_connection,
     ws::AgentConnectionManager,
-    middleware::auth_middleware,
 };
 
 #[tokio::main]

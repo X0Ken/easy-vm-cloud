@@ -7,7 +7,7 @@
 
 use common::ws_rpc::NodeResourceInfo;
 use std::error::Error;
-use tracing::{debug, info};
+use tracing::debug;
 
 /// 节点信息管理器
 #[derive(Clone)]

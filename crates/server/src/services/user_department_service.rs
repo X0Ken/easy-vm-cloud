@@ -10,7 +10,7 @@ pub struct UserDepartmentService;
 impl UserDepartmentService {
     /// 为用户分配部门
     pub async fn assign_user_to_department(db: &DatabaseConnection, dto: CreateUserDepartmentDto) -> Result<Model> {
-        let db = db;
+        
 
         // 检查用户是否存在
         let _user = UserService::get_user(db, dto.user_id).await?
@@ -54,7 +54,7 @@ impl UserDepartmentService {
 
     /// 更新用户部门信息
     pub async fn update_user_department(db: &DatabaseConnection, id: i32, dto: UpdateUserDepartmentDto) -> Result<Model> {
-        let db = db;
+        
 
         let user_department = crate::db::models::user_department::Entity::find_by_id(id)
             .one(db)
@@ -86,7 +86,7 @@ impl UserDepartmentService {
 
     /// 移除用户部门关联
     pub async fn remove_user_from_department(db: &DatabaseConnection, id: i32) -> Result<bool> {
-        let db = db;
+        
 
         let result = crate::db::models::user_department::Entity::delete_by_id(id)
             .exec(db)
@@ -97,7 +97,7 @@ impl UserDepartmentService {
 
     /// 获取用户部门关联详情
     pub async fn get_user_department(db: &DatabaseConnection, id: i32) -> Result<Option<UserDepartmentDto>> {
-        let db = db;
+        
 
         let user_department = Entity::find_by_id(id)
             .one(db)
@@ -127,7 +127,7 @@ impl UserDepartmentService {
 
     /// 获取用户的所有部门
     pub async fn get_user_departments(db: &DatabaseConnection, user_id: i32) -> Result<Vec<UserDepartmentDto>> {
-        let db = db;
+        
 
         let user_departments = crate::db::models::user_department::Entity::find()
             .filter(Column::UserId.eq(user_id))
@@ -159,7 +159,7 @@ impl UserDepartmentService {
 
     /// 获取部门的所有用户
     pub async fn get_department_users(db: &DatabaseConnection, department_id: i32) -> Result<Vec<UserDepartmentDto>> {
-        let db = db;
+        
 
         let user_departments = crate::db::models::user_department::Entity::find()
             .filter(Column::DepartmentId.eq(department_id))
@@ -191,7 +191,7 @@ impl UserDepartmentService {
 
     /// 统计部门用户数量
     pub async fn count_users_by_department(db: &DatabaseConnection, department_id: i32) -> Result<i64> {
-        let db = db;
+        
 
                 let count = crate::db::models::user_department::Entity::find()
             .filter(Column::DepartmentId.eq(department_id))
@@ -203,7 +203,7 @@ impl UserDepartmentService {
 
     /// 获取用户的主要部门
     pub async fn get_user_primary_department(db: &DatabaseConnection, user_id: i32) -> Result<Option<UserDepartmentDto>> {
-        let db = db;
+        
 
         let user_department = crate::db::models::user_department::Entity::find()
             .filter(Column::UserId.eq(user_id))
@@ -239,7 +239,7 @@ impl UserDepartmentService {
         department_id: i32,
         position: Option<String>
     ) -> Result<Vec<Model>> {
-        let db = db;
+        
 
         // 检查部门是否存在
         let _department = DepartmentService::get_department(db, department_id).await?

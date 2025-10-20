@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ impl IntoResponse for ApiError {
 }
 
 #[derive(Debug)]
-enum ApiError {
+pub(crate) enum ApiError {
     NotFound(String),
     BadRequest(String),
     Internal(String),

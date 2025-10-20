@@ -9,7 +9,6 @@ pub use manager::{
     VMConfig,
     VolumeConfig,
     NetworkConfig,
-    VMInfo,
 };
 
 pub use common::ws_rpc::types::{DiskBusType, DiskDeviceType};

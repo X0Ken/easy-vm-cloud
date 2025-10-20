@@ -4,7 +4,6 @@
 
 use async_trait::async_trait;
 use common::{Error, Result};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::process::Command;

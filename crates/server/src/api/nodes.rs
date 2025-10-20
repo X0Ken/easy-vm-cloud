@@ -3,7 +3,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post, put, delete},
+    routing::get,
     Json,
     Router,
 };
@@ -13,7 +13,7 @@ use validator::Validate;
 use crate::{
     app_state::AppState, 
     services::node_service::NodeService,
-    db::models::node::{CreateNodeDto, UpdateNodeDto, NodeResponse, NodeListResponse, NodeHeartbeatDto, NodeStatsResponse},
+    db::models::node::{CreateNodeDto, UpdateNodeDto, NodeResponse, NodeListResponse, NodeStatsResponse},
 };
 
 /// 节点路由

@@ -16,7 +16,7 @@ use crate::{
     api::utils::check_permission,
     app_state::AppState,
 };
-use sea_orm::DatabaseConnection;
+ 
 
 pub fn user_routes() -> Router<AppState> {
     Router::new()
@@ -118,7 +118,7 @@ async fn list_users(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{CreateUserDto, LoginDto, UserResponse, PaginationQuery, PaginationInfo, PaginationResponse};
+    use crate::db::models::{CreateUserDto, LoginDto, UserResponse, PaginationQuery, PaginationInfo, PaginationResponse};
     use validator::Validate;
     use serde_json::json;
     use axum::http::StatusCode;

@@ -5,8 +5,7 @@ use uuid::Uuid;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 
 use crate::db::models::node::{
-    CreateNodeDto, UpdateNodeDto, NodeResponse, NodeListResponse, NodeStatus, 
-    NodeHeartbeatDto, NodeStatsResponse, Entity as NodeEntity, Column as NodeColumn, 
+    CreateNodeDto, UpdateNodeDto, NodeResponse, NodeListResponse, NodeStatus, NodeStatsResponse, Entity as NodeEntity, Column as NodeColumn, 
     ActiveModel as NodeActiveModel,
 };
 use crate::app_state::AppState;

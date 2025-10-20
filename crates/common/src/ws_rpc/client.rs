@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 /// RPC 响应等待器
 type ResponseWaiter = oneshot::Sender<Result<RpcMessage, RpcError>>;
