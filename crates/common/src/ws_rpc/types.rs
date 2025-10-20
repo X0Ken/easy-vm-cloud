@@ -401,6 +401,40 @@ pub struct DetachInterfaceResponse {
 }
 
 // ============================================================================
+// 虚拟机存储卷管理
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttachVolumeRequest {
+    pub vm_id: String,
+    pub volume_id: String,
+    pub volume_path: String,
+    pub bus_type: DiskBusType,
+    pub device_type: DiskDeviceType,
+    pub format: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttachVolumeResponse {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,  // 生成的设备名，如 vda, vdb 等
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetachVolumeRequest {
+    pub vm_id: String,
+    pub volume_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetachVolumeResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+// ============================================================================
 // Agent 注册
 // ============================================================================
 

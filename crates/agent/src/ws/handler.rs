@@ -167,6 +167,10 @@ impl RpcHandlerRegistry {
             "attach_interface" => self.handle_attach_interface(payload).await,
             "detach_interface" => self.handle_detach_interface(payload).await,
             
+            // 虚拟机存储卷管理
+            "attach_volume" => self.handle_attach_volume(payload).await,
+            "detach_volume" => self.handle_detach_volume(payload).await,
+            
             _ => {
                 return RpcMessage::error_response(
                     msg.id,
@@ -231,6 +235,7 @@ impl RpcHandlerRegistry {
             memory_mb: req.memory_mb,
             os_type: req.os_type.unwrap_or_else(|| "linux".to_string()),  // 默认操作系统类型
             disks: req.disks.iter().map(|d| crate::hypervisor::DiskConfig {
+                volume_id: d.volume_id.clone(),
                 volume_path: d.volume_path.clone(),
                 bus_type: d.bus_type.clone(),
                 device_type: d.device_type.clone(),
@@ -1003,6 +1008,104 @@ impl RpcHandlerRegistry {
         
         info!("网络配置完成: network_id={}, bridge={}", network_id, bridge_name);
         Ok(())
+    }
+
+    /// 处理挂载存储卷请求
+    async fn handle_attach_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+        let request: AttachVolumeRequest = serde_json::from_value(payload)
+            .map_err(|e| RpcError::new(
+                RpcErrorCode::InvalidRequest,
+                format!("解析请求参数失败: {}", e),
+            ))?;
+
+        info!("🔗 挂载存储卷到虚拟机: vm_id={}, volume_id={}", request.vm_id, request.volume_id);
+
+        // 检查虚拟机是否存在
+        if !self.hypervisor.vm_exists(&request.vm_id).await
+            .map_err(|e| RpcError::new(RpcErrorCode::VmOperationFailed, format!("检查虚拟机失败: {}", e)))? {
+            return Err(RpcError::new(
+                RpcErrorCode::VmNotFound,
+                format!("虚拟机不存在: {}", request.vm_id),
+            ));
+        }
+
+        // 调用虚拟化管理器挂载存储卷
+        match self.hypervisor.attach_volume(
+            &request.vm_id,
+            &request.volume_id,
+            &request.volume_path,
+            request.bus_type,
+            request.device_type,
+            &request.format,
+        ).await {
+            Ok(device) => {
+                info!("✅ 存储卷挂载成功: vm_id={}, volume_id={}, device={}", 
+                      request.vm_id, request.volume_id, device);
+                
+                let response = AttachVolumeResponse {
+                    success: true,
+                    message: "存储卷挂载成功".to_string(),
+                    device: Some(device),
+                };
+                Ok(serde_json::to_value(response)
+                    .map_err(|e| RpcError::new(RpcErrorCode::InternalError, format!("序列化响应失败: {}", e)))?)
+            }
+            Err(e) => {
+                error!("❌ 存储卷挂载失败: vm_id={}, volume_id={}, error={}", 
+                       request.vm_id, request.volume_id, e);
+                Err(RpcError::new(
+                    RpcErrorCode::VmOperationFailed,
+                    format!("存储卷挂载失败: {}", e),
+                ))
+            }
+        }
+    }
+
+    /// 处理分离存储卷请求
+    async fn handle_detach_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+        let request: DetachVolumeRequest = serde_json::from_value(payload)
+            .map_err(|e| RpcError::new(
+                RpcErrorCode::InvalidRequest,
+                format!("解析请求参数失败: {}", e),
+            ))?;
+
+        info!("🔌 从虚拟机分离存储卷: vm_id={}, volume_id={}", 
+              request.vm_id, request.volume_id);
+
+        // 检查虚拟机是否存在
+        if !self.hypervisor.vm_exists(&request.vm_id).await
+            .map_err(|e| RpcError::new(RpcErrorCode::VmOperationFailed, format!("检查虚拟机失败: {}", e)))? {
+            return Err(RpcError::new(
+                RpcErrorCode::VmNotFound,
+                format!("虚拟机不存在: {}", request.vm_id),
+            ));
+        }
+
+        // 调用虚拟化管理器分离存储卷
+        match self.hypervisor.detach_volume(
+            &request.vm_id,
+            &request.volume_id,
+        ).await {
+            Ok(_) => {
+                info!("✅ 存储卷分离成功: vm_id={}, volume_id={}", 
+                      request.vm_id, request.volume_id);
+                
+                let response = DetachVolumeResponse {
+                    success: true,
+                    message: "存储卷分离成功".to_string(),
+                };
+                Ok(serde_json::to_value(response)
+                    .map_err(|e| RpcError::new(RpcErrorCode::InternalError, format!("序列化响应失败: {}", e)))?)
+            }
+            Err(e) => {
+                error!("❌ 存储卷分离失败: vm_id={}, volume_id={}, error={}", 
+                       request.vm_id, request.volume_id, e);
+                Err(RpcError::new(
+                    RpcErrorCode::VmOperationFailed,
+                    format!("存储卷分离失败: {}", e),
+                ))
+            }
+        }
     }
 }
 

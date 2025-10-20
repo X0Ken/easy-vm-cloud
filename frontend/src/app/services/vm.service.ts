@@ -219,4 +219,20 @@ export class VmService {
   getVMNetworks(id: string): Observable<any[]> {
     return this.http.get<any[]>(this.apiConfig.buildUrl(`/vms/${id}/networks`));
   }
+
+  // 挂载存储卷到虚拟机
+  attachVolume(vmId: string, volumeId: string, busType?: DiskBusType, deviceType?: DiskDeviceType): Observable<any> {
+    return this.http.post<any>(this.apiConfig.buildUrl(`/vms/${vmId}/volumes/attach`), {
+      volume_id: volumeId,
+      bus_type: busType || 'virtio',
+      device_type: deviceType || 'disk'
+    });
+  }
+
+  // 从虚拟机移除存储卷
+  detachVolume(vmId: string, volumeId: string): Observable<any> {
+    return this.http.post<any>(this.apiConfig.buildUrl(`/vms/${vmId}/volumes/detach`), {
+      volume_id: volumeId
+    });
+  }
 }

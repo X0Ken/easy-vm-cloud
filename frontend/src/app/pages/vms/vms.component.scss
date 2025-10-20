@@ -312,3 +312,83 @@
     padding: 1px 4px;
   }
 }
+
+// 磁盘管理样式
+.card-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+  
+  button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+// 存储卷头部样式
+.storage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  
+  .storage-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1890ff;
+  }
+  
+  button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+// 存储卷表格样式
+::ng-deep .ant-table-tbody > tr > td {
+  vertical-align: middle;
+  
+  .ant-tag {
+    margin: 0;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  
+  .ant-btn {
+    &.ant-btn-text {
+      padding: 2px 6px;
+      height: auto;
+      font-size: 11px;
+      
+      &:hover {
+        background: #fff2f0;
+      }
+      
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+
+// 挂载存储卷模态框样式
+::ng-deep .ant-modal-body {
+  .ant-form-item {
+    margin-bottom: 16px;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+  
+  .ant-select {
+    width: 100%;
+  }
+}

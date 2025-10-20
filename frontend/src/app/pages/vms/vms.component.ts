@@ -19,7 +19,7 @@ import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzGridModule } from 'ng-zorro-antd/grid';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { FormsModule } from '@angular/forms';
-import { VmService, VM, Node, CreateVMRequest, UpdateVMRequest, PaginatedResponse } from '../../services/vm.service';
+import { VmService, VM, Node, CreateVMRequest, UpdateVMRequest, PaginatedResponse, DiskBusType, DiskDeviceType } from '../../services/vm.service';
 import { StorageService } from '../../services/storage.service';
 import { NetworkService } from '../../services/network.service';
 import { WebSocketService } from '../../services/websocket.service';
@@ -70,6 +70,17 @@ export class VmsComponent implements OnInit {
   vmNetworks: any[] = [];
   volumesLoading = false;
   networksLoading = false;
+  
+  // 挂载存储卷相关
+  isAttachVolumeModalVisible = false;
+  attachVolumeLoading = false;
+  availableVolumes: any[] = [];
+  availableVolumesLoading = false;
+  attachVolumeForm = {
+    volume_id: '',
+    bus_type: 'virtio' as DiskBusType,
+    device_type: 'disk' as DiskDeviceType
+  };
   
   // WebSocket 相关
   private destroy$ = new Subject<void>();
@@ -549,5 +560,172 @@ export class VmsComponent implements OnInit {
         this.networksLoading = false;
       }
     });
+  }
+
+  /**
+   * 显示挂载存储卷模态框
+   */
+  showAttachVolumeModal(): void {
+    this.isAttachVolumeModalVisible = true;
+    this.attachVolumeForm = {
+      volume_id: '',
+      bus_type: 'virtio',
+      device_type: 'disk'
+    };
+    this.availableVolumes = [];
+    // 打开模态框时立即加载可用存储卷
+    this.loadAvailableVolumes();
+  }
+
+  /**
+   * 加载可用存储卷
+   */
+  loadAvailableVolumes(): void {
+    this.availableVolumesLoading = true;
+    this.storageService.getStorageVolumes(1, 50).subscribe({
+      next: (response: any) => {
+        this.availableVolumes = response.data.filter((volume: any) => 
+          volume.status === 'available'
+        );
+        this.availableVolumesLoading = false;
+      },
+      error: (error: any) => {
+        console.error('加载可用存储卷失败:', error);
+        this.message.error('加载可用存储卷失败');
+        this.availableVolumesLoading = false;
+      }
+    });
+  }
+
+  /**
+   * 搜索可用存储卷
+   */
+  searchAvailableVolumes(searchText: string): void {
+    if (!searchText.trim()) {
+      // 如果搜索文本为空，重新加载所有可用存储卷
+      this.loadAvailableVolumes();
+      return;
+    }
+
+    this.availableVolumesLoading = true;
+    this.storageService.getStorageVolumes(1, 50).subscribe({
+      next: (response: any) => {
+        this.availableVolumes = response.data.filter((volume: any) => 
+          volume.status === 'available' && (
+            volume.name.toLowerCase().includes(searchText.toLowerCase()) ||
+            volume.id.toString().toLowerCase().includes(searchText.toLowerCase())
+          )
+        );
+        this.availableVolumesLoading = false;
+      },
+      error: (error: any) => {
+        console.error('搜索可用存储卷失败:', error);
+        this.message.error('搜索可用存储卷失败');
+        this.availableVolumesLoading = false;
+      }
+    });
+  }
+
+  /**
+   * 处理挂载存储卷确认
+   */
+  handleAttachVolumeOk(): void {
+    if (!this.attachVolumeForm.volume_id) {
+      this.message.error('请选择要挂载的存储卷');
+      return;
+    }
+
+    if (!this.selectedVm) {
+      this.message.error('虚拟机信息不存在');
+      return;
+    }
+
+    this.attachVolumeLoading = true;
+    this.vmService.attachVolume(
+      this.selectedVm.id,
+      this.attachVolumeForm.volume_id,
+      this.attachVolumeForm.bus_type,
+      this.attachVolumeForm.device_type
+    ).subscribe({
+      next: (response) => {
+        this.message.success('存储卷挂载成功');
+        this.isAttachVolumeModalVisible = false;
+        this.attachVolumeLoading = false;
+        // 重新加载虚拟机存储卷信息
+        this.loadVmDetails(this.selectedVm!.id);
+      },
+      error: (error) => {
+        console.error('挂载存储卷失败:', error);
+        this.message.error('挂载存储卷失败: ' + (error.error?.message || error.message));
+        this.attachVolumeLoading = false;
+      }
+    });
+  }
+
+  /**
+   * 处理挂载存储卷取消
+   */
+  handleAttachVolumeCancel(): void {
+    this.isAttachVolumeModalVisible = false;
+    this.attachVolumeForm = {
+      volume_id: '',
+      bus_type: 'virtio',
+      device_type: 'disk'
+    };
+    this.availableVolumes = [];
+  }
+
+  /**
+   * 移除存储卷
+   */
+  detachVolume(volumeId: string): void {
+    if (!this.selectedVm) {
+      this.message.error('虚拟机信息不存在');
+      return;
+    }
+
+    this.vmService.detachVolume(this.selectedVm.id, volumeId).subscribe({
+      next: (response) => {
+        this.message.success('存储卷移除成功');
+        // 重新加载虚拟机存储卷信息
+        this.loadVmDetails(this.selectedVm!.id);
+      },
+      error: (error) => {
+        console.error('移除存储卷失败:', error);
+        this.message.error('移除存储卷失败: ' + (error.error?.message || error.message));
+      }
+    });
+  }
+
+  /**
+   * 获取总线类型颜色
+   */
+  getBusTypeColor(busType: string): string {
+    switch (busType) {
+      case 'virtio':
+        return 'green';
+      case 'scsi':
+        return 'blue';
+      case 'ide':
+        return 'orange';
+      default:
+        return 'default';
+    }
+  }
+
+  /**
+   * 获取总线类型文本
+   */
+  getBusTypeText(busType: string): string {
+    switch (busType) {
+      case 'virtio':
+        return 'VirtIO';
+      case 'scsi':
+        return 'SCSI';
+      case 'ide':
+        return 'IDE';
+      default:
+        return busType;
+    }
   }
 }

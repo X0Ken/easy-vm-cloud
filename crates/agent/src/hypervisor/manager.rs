@@ -168,6 +168,9 @@ impl HypervisorManager {
             
             writeln!(xml, "      <source file='{}'/>", disk.volume_path).unwrap();
             
+            // 添加序列号 - 使用 volume_id 作为序列号
+            writeln!(xml, "      <serial>{}</serial>", disk.volume_id).unwrap();
+            
             // 自动生成设备名 - 根据总线类型和设备类型
             let device_name = match (disk.bus_type.clone(), disk.device_type.clone()) {
                 (DiskBusType::Virtio, DiskDeviceType::Disk) => format!("vd{}", (b'a' + idx as u8) as char),
@@ -521,6 +524,330 @@ impl HypervisorManager {
         tracing::info!("✅ 找到 {} 个虚拟机", vm_list.len());
         Ok(vm_list)
     }
+
+    /// 挂载存储卷到虚拟机
+    pub async fn attach_volume(
+        &self,
+        vm_id: &str,
+        volume_id: &str,
+        volume_path: &str,
+        bus_type: DiskBusType,
+        device_type: DiskDeviceType,
+        format: &str,
+    ) -> Result<String> {
+        tracing::info!("🔗 挂载存储卷: vm_id={}, volume_id={}, path={}", vm_id, volume_id, volume_path);
+        
+        let conn = self.conn.lock().await;
+        
+        // 查找虚拟机
+        let domain = if let Ok(domain) = virt::domain::Domain::lookup_by_uuid_string(&conn, vm_id) {
+            domain
+        } else if let Ok(domain) = virt::domain::Domain::lookup_by_name(&conn, vm_id) {
+            domain
+        } else {
+            return Err(common::Error::NotFound(format!("虚拟机不存在: {}", vm_id)));
+        };
+
+        // 检查虚拟机状态
+        let (state, _reason) = domain.get_state()
+            .map_err(|e| common::Error::Internal(format!("无法获取虚拟机状态: {}", e)))?;
+        
+        // libvirt 域状态常量
+        const VIR_DOMAIN_RUNNING: u32 = 1;
+        const VIR_DOMAIN_PAUSED: u32 = 3;
+        const VIR_DOMAIN_SHUTOFF: u32 = 5;
+        
+        let is_running = state == VIR_DOMAIN_RUNNING || state == VIR_DOMAIN_PAUSED;
+        tracing::info!("虚拟机状态: {} (运行中: {})", state, is_running);
+
+        // 获取当前磁盘设备列表，确定下一个设备名
+        let device_name = self.get_next_disk_device(&domain).await?;
+        
+        // 构建磁盘XML配置
+        let disk_xml = self.build_disk_xml(
+            volume_path,
+            &device_name,
+            bus_type,
+            device_type,
+            format,
+            volume_id,
+        )?;
+
+        tracing::debug!("磁盘XML配置: {}", disk_xml);
+
+        if is_running {
+            // 虚拟机正在运行，使用 attach_device 进行热插拔
+            tracing::info!("虚拟机正在运行，使用热插拔方式挂载存储卷");
+            domain.attach_device(&disk_xml)
+                .map_err(|e| common::Error::Internal(format!("挂载存储卷失败: {}", e)))?;
+        } else {
+            // 虚拟机未运行，重新定义虚拟机配置
+            tracing::info!("虚拟机未运行，重新定义虚拟机配置");
+            
+            // 获取当前虚拟机XML配置
+            let current_xml = domain.get_xml_desc(0)
+                .map_err(|e| common::Error::Internal(format!("获取虚拟机XML失败: {}", e)))?;
+            
+            // 解析XML并添加磁盘设备
+            let updated_xml = self.add_disk_to_xml(&current_xml, &disk_xml, volume_id)?;
+            tracing::info!("虚拟机 XML 配置:\n{}", updated_xml);
+            
+            // 重新定义虚拟机配置
+            virt::domain::Domain::define_xml(&conn, &updated_xml)
+                .map_err(|e| common::Error::Internal(format!("重新定义虚拟机配置失败: {}", e)))?;
+        }
+
+        tracing::info!("✅ 存储卷挂载成功: vm_id={}, volume_id={}, device={}", vm_id, volume_id, device_name);
+        Ok(device_name)
+    }
+
+    /// 从虚拟机分离存储卷
+    pub async fn detach_volume(
+        &self,
+        vm_id: &str,
+        volume_id: &str,
+    ) -> Result<()> {
+        tracing::info!("🔌 分离存储卷: vm_id={}, volume_id={}", vm_id, volume_id);
+        
+        let conn = self.conn.lock().await;
+        
+        // 查找虚拟机
+        let domain = if let Ok(domain) = virt::domain::Domain::lookup_by_uuid_string(&conn, vm_id) {
+            domain
+        } else if let Ok(domain) = virt::domain::Domain::lookup_by_name(&conn, vm_id) {
+            domain
+        } else {
+            return Err(common::Error::NotFound(format!("虚拟机不存在: {}", vm_id)));
+        };
+
+        // 检查虚拟机状态
+        let (state, _reason) = domain.get_state()
+            .map_err(|e| common::Error::Internal(format!("无法获取虚拟机状态: {}", e)))?;
+        
+        // libvirt 域状态常量
+        const VIR_DOMAIN_RUNNING: u32 = 1;
+        const VIR_DOMAIN_PAUSED: u32 = 3;
+        const VIR_DOMAIN_SHUTOFF: u32 = 5;
+        
+        let is_running = state == VIR_DOMAIN_RUNNING || state == VIR_DOMAIN_PAUSED;
+        tracing::info!("虚拟机状态: {} (运行中: {})", state, is_running);
+
+        // 获取虚拟机XML配置，找到要分离的设备详细信息
+        let xml = domain.get_xml_desc(0)
+            .map_err(|e| common::Error::Internal(format!("获取虚拟机XML失败: {}", e)))?;
+        
+        // 根据 volume_id 查找磁盘XML
+        match self.find_disk_xml_by_volume_id(&xml, volume_id) {
+            Ok(disk_xml) => {
+                tracing::debug!("分离磁盘XML: {}", disk_xml);
+
+                if is_running {
+                    // 虚拟机正在运行，使用 detach_device 进行热插拔
+                    tracing::info!("虚拟机正在运行，使用热插拔方式分离存储卷");
+                    domain.detach_device(&disk_xml)
+                        .map_err(|e| common::Error::Internal(format!("分离存储卷失败: {}", e)))?;
+                } else {
+                    // 虚拟机未运行，重新定义虚拟机配置
+                    tracing::info!("虚拟机未运行，重新定义虚拟机配置");
+                    
+                    // 从XML配置中移除磁盘设备
+                    let updated_xml = self.remove_disk_from_xml(&xml, volume_id)?;
+                    
+                    // 重新定义虚拟机配置
+                    virt::domain::Domain::define_xml(&conn, &updated_xml)
+                        .map_err(|e| common::Error::Internal(format!("重新定义虚拟机配置失败: {}", e)))?;
+                }
+
+                tracing::info!("✅ 存储卷分离成功: vm_id={}, volume_id={}", vm_id, volume_id);
+            }
+            Err(common::Error::NotFound(_)) => {
+                // 存储卷不存在，直接返回成功（最终一致性）
+                tracing::warn!("⚠️ 存储卷不存在，跳过分离操作: vm_id={}, volume_id={}", vm_id, volume_id);
+            }
+            Err(e) => {
+                // 其他错误仍然返回
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 获取下一个可用的磁盘设备名
+    async fn get_next_disk_device(&self, domain: &virt::domain::Domain) -> Result<String> {
+        // 获取虚拟机XML配置
+        let xml = domain.get_xml_desc(0)
+            .map_err(|e| common::Error::Internal(format!("获取虚拟机XML失败: {}", e)))?;
+
+        // 解析XML，查找已使用的磁盘设备
+        let used_devices = self.parse_disk_devices(&xml)?;
+        
+        // 生成下一个设备名 (vda, vdb, vdc, ...)
+        for i in 0..26 {
+            let device = format!("vd{}", (b'a' + i as u8) as char);
+            if !used_devices.contains(&device) {
+                return Ok(device);
+            }
+        }
+        
+        Err(common::Error::Internal("没有可用的磁盘设备名".to_string()))
+    }
+
+    /// 解析XML中的磁盘设备名
+    fn parse_disk_devices(&self, xml: &str) -> Result<Vec<String>> {
+        use roxmltree::Document;
+        
+        let doc = Document::parse(xml)
+            .map_err(|e| common::Error::Internal(format!("解析XML失败: {}", e)))?;
+        
+        let mut devices = Vec::new();
+        
+        // 查找所有磁盘设备
+        for node in doc.descendants() {
+            if node.tag_name().name() == "disk" {
+                if let Some(target) = node.children().find(|n| n.tag_name().name() == "target") {
+                    if let Some(dev) = target.attribute("dev") {
+                        devices.push(dev.to_string());
+                    }
+                }
+            }
+        }
+        
+        Ok(devices)
+    }
+
+    /// 构建磁盘XML配置
+    fn build_disk_xml(
+        &self,
+        volume_path: &str,
+        device_name: &str,
+        bus_type: DiskBusType,
+        device_type: DiskDeviceType,
+        format: &str,
+        volume_id: &str,
+    ) -> Result<String> {
+        let bus_str = match bus_type {
+            DiskBusType::Virtio => "virtio",
+            DiskBusType::Scsi => "scsi",
+            DiskBusType::Ide => "ide",
+        };
+
+        let device_str = match device_type {
+            DiskDeviceType::Disk => "disk",
+            DiskDeviceType::Cdrom => "cdrom",
+        };
+
+        let xml = format!(
+            r#"<disk type="file" device="{}">
+                <driver name="qemu" type="{}"/>
+                <source file="{}"/>
+                <target dev="{}" bus="{}"/>
+                <serial>{}</serial>
+            </disk>"#,
+            device_str, format, volume_path, device_name, bus_str, volume_id
+        );
+
+        Ok(xml)
+    }
+
+    /// 根据 volume_id 查找磁盘XML配置
+    fn find_disk_xml_by_volume_id(&self, xml: &str, volume_id: &str) -> Result<String> {
+        use roxmltree::Document;
+        
+        let doc = Document::parse(xml)
+            .map_err(|e| common::Error::Internal(format!("解析XML失败: {}", e)))?;
+        
+        // 查找所有磁盘设备
+        for node in doc.descendants() {
+            if node.tag_name().name() == "disk" {
+                // 查找serial元素，检查是否匹配volume_id
+                if let Some(serial) = node.children().find(|n| n.tag_name().name() == "serial") {
+                    if let Some(serial_text) = serial.text() {
+                        if serial_text.trim() == volume_id {
+                            // 找到匹配的磁盘，构建完整的磁盘XML
+                            let device_type = node.attribute("device").unwrap_or("disk");
+                            
+                            // 查找target元素
+                            let target = node.children().find(|n| n.tag_name().name() == "target");
+                            let device = target.and_then(|t| t.attribute("dev")).unwrap_or("vda");
+                            let bus = target.and_then(|t| t.attribute("bus")).unwrap_or("virtio");
+                            
+                            // 查找driver元素
+                            let driver = node.children().find(|n| n.tag_name().name() == "driver");
+                            let driver_name = driver.and_then(|d| d.attribute("name")).unwrap_or("qemu");
+                            let driver_type = driver.and_then(|d| d.attribute("type")).unwrap_or("qcow2");
+                            
+                            // 查找source元素
+                            let source = node.children().find(|n| n.tag_name().name() == "source");
+                            let file_path = source.and_then(|s| s.attribute("file")).unwrap_or("");
+                            
+                            let disk_xml = format!(
+                                r#"<disk type="file" device="{}">
+                                    <driver name="{}" type="{}"/>
+                                    <source file="{}"/>
+                                    <target dev="{}" bus="{}"/>
+                                    <serial>{}</serial>
+                                </disk>"#,
+                                device_type, driver_name, driver_type, file_path, device, bus, volume_id
+                            );
+                            
+                            return Ok(disk_xml);
+                        }
+                    }
+                }
+            }
+        }
+        
+        Err(common::Error::NotFound(format!("未找到存储卷: {}", volume_id)))
+    }
+
+    /// 将磁盘设备添加到虚拟机XML配置中
+    fn add_disk_to_xml(&self, current_xml: &str, disk_xml: &str, _volume_id: &str) -> Result<String> {
+        // 查找 </devices> 标签并插入磁盘设备
+        if let Some(pos) = current_xml.find("</devices>") {
+            let mut result = current_xml.to_string();
+            result.insert_str(pos, &format!("    {}\n", disk_xml));
+            Ok(result)
+        } else {
+            Err(common::Error::Internal("未找到 </devices> 标签".to_string()))
+        }
+    }
+
+    /// 从虚拟机XML配置中移除磁盘设备
+    fn remove_disk_from_xml(&self, current_xml: &str, volume_id: &str) -> Result<String> {
+        use roxmltree::Document;
+        
+        let doc = Document::parse(current_xml)
+            .map_err(|e| common::Error::Internal(format!("解析XML失败: {}", e)))?;
+        
+        let mut result = current_xml.to_string();
+        
+        // 查找所有磁盘设备
+        for node in doc.descendants() {
+            if node.tag_name().name() == "disk" {
+                // 查找serial元素，检查是否匹配volume_id
+                if let Some(serial) = node.children().find(|n| n.tag_name().name() == "serial") {
+                    if let Some(serial_text) = serial.text() {
+                        if serial_text.trim() == volume_id {
+                            // 找到匹配的磁盘，通过serial位置定位整个disk块
+                            let serial_pattern = format!("<serial>{}</serial>", volume_id);
+                            if let Some(pos) = result.find(&serial_pattern) {
+                                // 找到包含该serial的整个disk块并移除
+                                let start = result[..pos].rfind("<disk").unwrap_or(pos);
+                                let end = result[pos..].find("</disk>").unwrap_or(0) + pos + 7;
+                                if start < end {
+                                    result.replace_range(start..end, "");
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(result)
+    }
 }
 
 /// 虚拟机配置
@@ -537,6 +864,7 @@ pub struct VMConfig {
 
 /// 磁盘配置
 pub struct DiskConfig {
+    pub volume_id: String,           // 存储卷ID，用作序列号
     pub volume_path: String,
     pub bus_type: DiskBusType,      // 总线类型: virtio, scsi, ide
     pub device_type: DiskDeviceType, // 设备类型: disk, cdrom

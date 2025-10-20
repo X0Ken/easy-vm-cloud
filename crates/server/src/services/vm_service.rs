@@ -793,33 +793,79 @@ impl VmService {
             return Err(anyhow::anyhow!("存储卷已被其他虚拟机使用"));
         }
 
-        // 获取当前的磁盘列表
-        let mut disks: Vec<DiskSpec> = vm.disk_ids
-            .as_ref()
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
+        // 获取存储卷路径
+        let volume_path = volume.path.clone()
+            .ok_or_else(|| anyhow::anyhow!("存储卷路径不存在"))?;
 
+        // 调用 Agent 挂载存储卷到虚拟机
+        if let Some(node_id) = &vm.node_id {
+            let request = common::ws_rpc::AttachVolumeRequest {
+                vm_id: vm_id.to_string(),
+                volume_id: dto.volume_id.clone(),
+                volume_path: volume_path.clone(),
+                bus_type: dto.bus_type.clone().unwrap_or_default(),
+                device_type: dto.device_type.clone().unwrap_or_default(),
+                format: volume.volume_type.clone(),
+            };
+            
+            let response_msg = self.state.agent_manager()
+                .call(
+                    node_id,
+                    "attach_volume",
+                    serde_json::to_value(&request)?,
+                    Duration::from_secs(60)
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
 
-        // 添加新磁盘
-        disks.push(DiskSpec {
-            volume_id: dto.volume_id.clone(),
-            bus_type: dto.bus_type.unwrap_or_default(),
-            device_type: dto.device_type.unwrap_or_default(),
-        });
+            let result: common::ws_rpc::AttachVolumeResponse = serde_json::from_value(
+                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+            )?;
 
-        // 更新虚拟机的磁盘列表
-        let disks_json = serde_json::to_value(&disks)?;
-        let mut vm_active: VmActiveModel = vm.into();
-        vm_active.disk_ids = Set(Some(disks_json));
-        vm_active.updated_at = Set(now.into());
-        vm_active.update(db).await?;
+            if !result.success {
+                return Err(anyhow::anyhow!("Agent 挂载存储卷失败: {}", result.message));
+            }
 
-        // 更新存储卷的vm_id
-        let mut volume_active: VolumeActiveModel = volume.into();
-        volume_active.vm_id = Set(Some(vm_id.to_string()));
-        volume_active.status = Set("in-use".to_string());
-        volume_active.updated_at = Set(now.into());
-        volume_active.update(db).await?;
+            // 获取生成的设备名（暂时不使用，但保留逻辑）
+            let _device = result.device.unwrap_or_else(|| {
+                // 如果没有返回设备名，根据现有磁盘数量生成
+                let disk_count = vm.disk_ids
+                    .as_ref()
+                    .and_then(|v| serde_json::from_value::<Vec<DiskSpec>>(v.clone()).ok())
+                    .map(|disks| disks.len())
+                    .unwrap_or(0);
+                format!("vd{}", (b'a' + disk_count as u8) as char)
+            });
+
+            // 获取当前的磁盘列表
+            let mut disks: Vec<DiskSpec> = vm.disk_ids
+                .as_ref()
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            // 添加新磁盘
+            disks.push(DiskSpec {
+                volume_id: dto.volume_id.clone(),
+                bus_type: dto.bus_type.clone().unwrap_or_default(),
+                device_type: dto.device_type.clone().unwrap_or_default(),
+            });
+
+            // 更新虚拟机的磁盘列表
+            let disks_json = serde_json::to_value(&disks)?;
+            let mut vm_active: VmActiveModel = vm.into();
+            vm_active.disk_ids = Set(Some(disks_json));
+            vm_active.updated_at = Set(now.into());
+            vm_active.update(db).await?;
+
+            // 更新存储卷的vm_id
+            let mut volume_active: VolumeActiveModel = volume.into();
+            volume_active.vm_id = Set(Some(vm_id.to_string()));
+            volume_active.status = Set("in-use".to_string());
+            volume_active.updated_at = Set(now.into());
+            volume_active.update(db).await?;
+        } else {
+            return Err(anyhow::anyhow!("虚拟机未分配到节点"));
+        }
 
         Ok(())
     }
@@ -835,10 +881,6 @@ impl VmService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
 
-        // 检查VM是否在运行
-        if vm.status == VmStatus::Running.as_str() {
-            return Err(anyhow::anyhow!("无法从运行中的虚拟机分离存储卷，请先停止虚拟机"));
-        }
 
         // 获取当前的磁盘列表
         let mut disks: Vec<DiskSpec> = vm.disk_ids
@@ -846,33 +888,73 @@ impl VmService {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        // 查找并移除指定的磁盘
-        let original_len = disks.len();
-        disks.retain(|d| d.volume_id != dto.volume_id);
-
-        if disks.len() == original_len {
-            return Err(anyhow::anyhow!("存储卷未附加到此虚拟机"));
+        // 查找要分离的磁盘（允许不存在，实现最终一致性）
+        let disk_exists = disks.iter()
+            .any(|d| d.volume_id == dto.volume_id);
+        
+        if !disk_exists {
+            tracing::warn!("⚠️ 存储卷未附加到此虚拟机，但继续执行分离操作以确保最终一致性: vm_id={}, volume_id={}", vm_id, dto.volume_id);
         }
 
-        // 更新虚拟机的磁盘列表
-        let disks_json = if disks.is_empty() {
-            serde_json::Value::Null
-        } else {
-            serde_json::to_value(&disks)?
-        };
-        
-        let mut vm_active: VmActiveModel = vm.into();
-        vm_active.disk_ids = Set(Some(disks_json));
-        vm_active.updated_at = Set(now.into());
-        vm_active.update(db).await?;
+        // 调用 Agent 从虚拟机分离存储卷
+        if let Some(node_id) = &vm.node_id {
+            let request = common::ws_rpc::DetachVolumeRequest {
+                vm_id: vm_id.to_string(),
+                volume_id: dto.volume_id.clone(),
+            };
+            
+            // 尝试调用 Agent，即使失败也继续执行数据库更新（最终一致性）
+            match self.state.agent_manager()
+                .call(
+                    node_id,
+                    "detach_volume",
+                    serde_json::to_value(&request)?,
+                    Duration::from_secs(60)
+                )
+                .await
+            {
+                Ok(response_msg) => {
+                    if let Ok(result) = serde_json::from_value::<common::ws_rpc::DetachVolumeResponse>(
+                        response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+                    ) {
+                        if !result.success {
+                            tracing::warn!("⚠️ Agent 分离存储卷失败，但继续执行数据库更新: {}", result.message);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️ WebSocket RPC 调用失败，但继续执行数据库更新以确保最终一致性: {}", e);
+                }
+            }
 
-        // 更新存储卷状态
-        if let Some(volume) = VolumeEntity::find_by_id(&dto.volume_id).one(db).await? {
-            let mut volume_active: VolumeActiveModel = volume.into();
-            volume_active.vm_id = Set(None);
-            volume_active.status = Set("available".to_string());
-            volume_active.updated_at = Set(now.into());
-            volume_active.update(db).await?;
+            // 从磁盘列表中移除指定的磁盘
+            disks.retain(|d| d.volume_id != dto.volume_id);
+
+            // 更新虚拟机的磁盘列表
+            let disks_json = if disks.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::to_value(&disks)?
+            };
+            
+            let mut vm_active: VmActiveModel = vm.into();
+            vm_active.disk_ids = Set(Some(disks_json));
+            vm_active.updated_at = Set(now.into());
+            vm_active.update(db).await?;
+
+            // 更新存储卷状态（允许存储卷不存在，实现最终一致性）
+            if let Some(volume) = VolumeEntity::find_by_id(&dto.volume_id).one(db).await? {
+                let mut volume_active: VolumeActiveModel = volume.into();
+                volume_active.vm_id = Set(None);
+                volume_active.status = Set("available".to_string());
+                volume_active.updated_at = Set(now.into());
+                volume_active.update(db).await?;
+                tracing::info!("✅ 存储卷状态已更新为可用: volume_id={}", dto.volume_id);
+            } else {
+                tracing::warn!("⚠️ 存储卷不存在，跳过状态更新: volume_id={}", dto.volume_id);
+            }
+        } else {
+            return Err(anyhow::anyhow!("虚拟机未分配到节点"));
         }
 
         Ok(())

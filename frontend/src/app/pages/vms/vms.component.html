@@ -406,7 +406,14 @@
       </nz-card>
 
       <!-- 存储卷信息 -->
-      <nz-card nzTitle="存储卷信息" [nzBordered]="false" class="detail-section">
+      <nz-card [nzBordered]="false" class="detail-section">
+        <div class="storage-header">
+          <h3 class="storage-title">存储卷信息</h3>
+          <button nz-button nzType="primary" nzSize="small" (click)="showAttachVolumeModal()">
+            <span nz-icon nzType="plus"></span>
+            挂载存储卷
+          </button>
+        </div>
         <nz-spin [nzSpinning]="volumesLoading">
           <div *ngIf="vmVolumes.length > 0; else noVolumes">
             <nz-table [nzData]="vmVolumes" [nzShowPagination]="false" nzSize="small">
@@ -415,8 +422,10 @@
                   <th>设备名</th>
                   <th>存储卷名称</th>
                   <th>大小</th>
-                  <th>类型</th>
+                  <th>总线类型</th>
+                  <th>设备类型</th>
                   <th>可启动</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -424,11 +433,36 @@
                   <td>{{ volume.device }}</td>
                   <td>{{ volume.volume_name || '未知' }}</td>
                   <td>{{ volume.size_gb ? volume.size_gb + ' GB' : '未知' }}</td>
-                  <td>{{ volume.volume_type || '未知' }}</td>
+                  <td>
+                    <nz-tag [nzColor]="getBusTypeColor(volume.bus_type)">
+                      {{ getBusTypeText(volume.bus_type) }}
+                    </nz-tag>
+                  </td>
+                  <td>
+                    <nz-tag [nzColor]="volume.device_type === 'disk' ? 'blue' : 'orange'">
+                      {{ volume.device_type === 'disk' ? '磁盘' : '光驱' }}
+                    </nz-tag>
+                  </td>
                   <td>
                     <nz-tag [nzColor]="volume.bootable ? 'green' : 'default'">
                       {{ volume.bootable ? '是' : '否' }}
                     </nz-tag>
+                  </td>
+                  <td>
+                    <button 
+                      nz-button 
+                      nzType="text" 
+                      nzDanger 
+                      nzSize="small"
+                      nz-popconfirm
+                      nzPopconfirmTitle="确定要移除这个存储卷吗？"
+                      nzPopconfirmPlacement="topRight"
+                      (nzOnConfirm)="detachVolume(volume.volume_id)"
+                      [disabled]="false"
+                    >
+                      <span nz-icon nzType="disconnect"></span>
+                      移除
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -471,6 +505,71 @@
         </nz-spin>
       </nz-card>
     </div>
+  </div>
+</nz-modal>
+
+<!-- 挂载存储卷模态框 -->
+<nz-modal
+  [(nzVisible)]="isAttachVolumeModalVisible"
+  nzTitle="挂载存储卷"
+  [nzWidth]="500"
+  (nzOnCancel)="handleAttachVolumeCancel()"
+  (nzOnOk)="handleAttachVolumeOk()"
+  [nzOkLoading]="attachVolumeLoading"
+>
+  <div *nzModalContent>
+    <form nz-form>
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">选择存储卷</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            nzPlaceHolder="请选择要挂载的存储卷" 
+            [(ngModel)]="attachVolumeForm.volume_id"
+            [ngModelOptions]="{standalone: true}"
+            name="volume_id"
+            nzAllowClear
+            nzShowSearch
+            (nzOnSearch)="searchAvailableVolumes($event)"
+            [nzLoading]="availableVolumesLoading"
+          >
+            <nz-option 
+              *ngFor="let volume of availableVolumes" 
+              [nzValue]="volume.id" 
+              [nzLabel]="volume.name + ' (' + volume.size_gb + 'GB)'"
+            ></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">总线类型</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            [(ngModel)]="attachVolumeForm.bus_type"
+            [ngModelOptions]="{standalone: true}"
+            name="bus_type"
+          >
+            <nz-option nzValue="virtio" nzLabel="VirtIO (推荐)"></nz-option>
+            <nz-option nzValue="scsi" nzLabel="SCSI"></nz-option>
+            <nz-option nzValue="ide" nzLabel="IDE"></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">设备类型</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select 
+            [(ngModel)]="attachVolumeForm.device_type"
+            [ngModelOptions]="{standalone: true}"
+            name="device_type"
+          >
+            <nz-option nzValue="disk" nzLabel="磁盘"></nz-option>
+            <nz-option nzValue="cdrom" nzLabel="光驱"></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
   </div>
 </nz-modal>
 
