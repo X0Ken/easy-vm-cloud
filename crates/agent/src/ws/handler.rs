@@ -1,16 +1,15 @@
-/// RPC 请求处理器
-/// 
-/// 注册和调度 Agent 端的 RPC 方法处理器
-
-use common::ws_rpc::{RpcMessage, RpcError, RpcErrorCode};
 use common::ws_rpc::types::*;
+/// RPC 请求处理器
+///
+/// 注册和调度 Agent 端的 RPC 方法处理器
+use common::ws_rpc::{RpcError, RpcErrorCode, RpcMessage};
 use std::sync::Arc;
-use tracing::{debug, error, info};
 use tokio::sync::mpsc;
+use tracing::{debug, error, info};
 
-use crate::hypervisor::{HypervisorManager, DiskBusType, DiskDeviceType};
-use crate::storage::StorageManager;
+use crate::hypervisor::{DiskBusType, DiskDeviceType, HypervisorManager};
 use crate::network::NetworkManager;
+use crate::storage::StorageManager;
 use crate::ws::client::WsClient;
 
 /// RPC 处理器注册表
@@ -141,27 +140,25 @@ impl RpcHandlerRegistry {
         let result = match method.as_str() {
             // 节点信息
             "get_node_info" => self.handle_get_node_info(payload).await,
-            
+
             // 存储管理
             "create_volume" => self.handle_create_volume(payload).await,
             "delete_volume" => self.handle_delete_volume(payload).await,
             "resize_volume" => self.handle_resize_volume(payload).await,
-            "snapshot_volume" => self.handle_snapshot_volume(payload).await,
             "clone_volume" => self.handle_clone_volume(payload).await,
             "get_volume_info" => self.handle_get_volume_info(payload).await,
             "list_volumes" => self.handle_list_volumes(payload).await,
-            
+
             // 网络管理
             "create_network" => self.handle_create_network(payload).await,
             "delete_network" => self.handle_delete_network(payload).await,
             "attach_interface" => self.handle_attach_interface(payload).await,
             "detach_interface" => self.handle_detach_interface(payload).await,
-            
+
             // 虚拟机存储卷管理
             "attach_volume" => self.handle_attach_volume(payload).await,
             "detach_volume" => self.handle_detach_volume(payload).await,
             // 异步卷操作通过通知
-            
             _ => {
                 return RpcMessage::error_response(
                     msg.id,
@@ -174,37 +171,31 @@ impl RpcHandlerRegistry {
 
         match result {
             Ok(response_payload) => RpcMessage::response(msg.id, response_payload),
-            Err(err) => RpcMessage::error_response(
-                msg.id,
-                err.code.as_str(),
-                err.message,
-                err.details,
-            ),
+            Err(err) => {
+                RpcMessage::error_response(msg.id, err.code.as_str(), err.message, err.details)
+            }
         }
     }
 
     /// 处理异步通知的统一入口
-    /// 
+    ///
     /// 根据通知的方法名路由到对应的处理逻辑
-    pub async fn handle_notification(&self, method: &str, payload: serde_json::Value) -> Result<(), RpcError> {
+    pub async fn handle_notification(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
         debug!("处理异步通知: method={}", method);
-        
+
         match method {
-            "stop_vm_async" => {
-                self.handle_stop_vm_async_internal(payload).await
-            }
-            "start_vm_async" => {
-                self.handle_start_vm_async_internal(payload).await
-            }
-            "restart_vm_async" => {
-                self.handle_restart_vm_async_internal(payload).await
-            }
-            "attach_volume_async" => {
-                self.handle_attach_volume_async_internal(payload).await
-            }
-            "detach_volume_async" => {
-                self.handle_detach_volume_async_internal(payload).await
-            }
+            "stop_vm_async" => self.handle_stop_vm_async_internal(payload).await,
+            "start_vm_async" => self.handle_start_vm_async_internal(payload).await,
+            "restart_vm_async" => self.handle_restart_vm_async_internal(payload).await,
+            "attach_volume_async" => self.handle_attach_volume_async_internal(payload).await,
+            "detach_volume_async" => self.handle_detach_volume_async_internal(payload).await,
+            "create_snapshot_async" => self.handle_create_snapshot_async_internal(payload).await,
+            "delete_snapshot_async" => self.handle_delete_snapshot_async_internal(payload).await,
+            "restore_snapshot_async" => self.handle_restore_snapshot_async_internal(payload).await,
             _ => {
                 debug!("未知的异步通知方法: {}", method);
                 Ok(())
@@ -216,9 +207,12 @@ impl RpcHandlerRegistry {
     // 节点信息处理
     // ========================================================================
 
-    async fn handle_get_node_info(&self, _payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_get_node_info(
+        &self,
+        _payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         info!("获取节点信息");
-        
+
         // TODO: 从 hypervisor 获取真实的节点信息
         let node_info = NodeInfo {
             node_id: std::env::var("NODE_ID").unwrap_or_else(|_| "unknown".to_string()),
@@ -233,32 +227,39 @@ impl RpcHandlerRegistry {
             timestamp: chrono::Utc::now().timestamp(),
         };
 
-        serde_json::to_value(&node_info)
-            .map_err(|e| RpcError::serialization_error(e))
+        serde_json::to_value(&node_info).map_err(|e| RpcError::serialization_error(e))
     }
 
     /// 处理异步启动虚拟机（内部方法，用于通知处理）
-    async fn handle_start_vm_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+    async fn handle_start_vm_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
         let req: serde_json::Value = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        let vm_id = req.get("vm_id")
+        let vm_id = req
+            .get("vm_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
 
-        let name = req.get("name")
+        let name = req
+            .get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 name 参数".to_string()))?;
 
-        let vcpu = req.get("vcpu")
+        let vcpu = req
+            .get("vcpu")
             .and_then(|v| v.as_u64())
             .ok_or_else(|| RpcError::invalid_params("缺少 vcpu 参数".to_string()))?;
 
-        let memory_mb = req.get("memory_mb")
+        let memory_mb = req
+            .get("memory_mb")
             .and_then(|v| v.as_u64())
             .ok_or_else(|| RpcError::invalid_params("缺少 memory_mb 参数".to_string()))?;
 
-        let os_type = req.get("os_type")
+        let os_type = req
+            .get("os_type")
             .and_then(|v| v.as_str())
             .unwrap_or("linux");
 
@@ -267,9 +268,13 @@ impl RpcHandlerRegistry {
         // 解析磁盘配置
         let mut volumes = Vec::new();
         if let Some(volumes_json) = req.get("volumes") {
-            if let Ok(volumes_array) = serde_json::from_value::<Vec<serde_json::Value>>(volumes_json.clone()) {
+            if let Ok(volumes_array) =
+                serde_json::from_value::<Vec<serde_json::Value>>(volumes_json.clone())
+            {
                 for volume_json in volumes_array {
-                    if let Ok(volume) = serde_json::from_value::<crate::hypervisor::VolumeConfig>(volume_json) {
+                    if let Ok(volume) =
+                        serde_json::from_value::<crate::hypervisor::VolumeConfig>(volume_json)
+                    {
                         volumes.push(volume);
                     }
                 }
@@ -279,9 +284,13 @@ impl RpcHandlerRegistry {
         // 解析网络配置
         let mut networks = Vec::new();
         if let Some(networks_json) = req.get("networks") {
-            if let Ok(networks_array) = serde_json::from_value::<Vec<serde_json::Value>>(networks_json.clone()) {
+            if let Ok(networks_array) =
+                serde_json::from_value::<Vec<serde_json::Value>>(networks_json.clone())
+            {
                 for network_json in networks_array {
-                    if let Ok(network) = serde_json::from_value::<crate::hypervisor::NetworkConfig>(network_json) {
+                    if let Ok(network) =
+                        serde_json::from_value::<crate::hypervisor::NetworkConfig>(network_json)
+                    {
                         networks.push(network);
                     }
                 }
@@ -290,9 +299,14 @@ impl RpcHandlerRegistry {
 
         // 确保网络配置：检查每个网络对应的 Bridge 是否存在，如果不存在则自动创建
         for network_config in &networks {
-            if let Err(e) = self.ensure_network_bridge(&network_config.network_name, &network_config.bridge_name).await {
-                error!("网络配置失败: network_id={}, bridge={}, error={}",
-                       network_config.network_name, network_config.bridge_name, e);
+            if let Err(e) = self
+                .ensure_network_bridge(&network_config.network_name, &network_config.bridge_name)
+                .await
+            {
+                error!(
+                    "网络配置失败: network_id={}, bridge={}, error={}",
+                    network_config.network_name, network_config.bridge_name, e
+                );
                 return Err(RpcError::new(
                     RpcErrorCode::NetworkError,
                     format!("网络配置失败: {}", e),
@@ -315,12 +329,12 @@ impl RpcHandlerRegistry {
         let hypervisor = self.hypervisor.clone();
         let vm_id = vm_id.to_string();
         let notification_sender = self.notification_sender.clone();
-        
+
         tokio::spawn(async move {
             match hypervisor.start_vm_with_config(&vm_id, &config).await {
                 Ok(_) => {
                     info!("虚拟机 {} 异步启动成功", vm_id);
-                    
+
                     // 发送成功通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -339,7 +353,7 @@ impl RpcHandlerRegistry {
                 }
                 Err(e) => {
                     error!("虚拟机 {} 异步启动失败: {}", vm_id, e);
-                    
+
                     // 发送失败通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -363,7 +377,10 @@ impl RpcHandlerRegistry {
     }
 
     /// 处理异步停止虚拟机（内部方法，用于通知处理）
-    pub async fn handle_stop_vm_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+    pub async fn handle_stop_vm_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
         let req: VmAsyncOperationRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
@@ -374,12 +391,12 @@ impl RpcHandlerRegistry {
         let vm_id = req.vm_id.clone();
         let force = req.force;
         let notification_sender = self.notification_sender.clone();
-        
+
         tokio::spawn(async move {
             match hypervisor.stop_vm(&vm_id, force).await {
                 Ok(_) => {
                     info!("虚拟机 {} 异步停止成功", vm_id);
-                    
+
                     // 发送成功通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -398,7 +415,7 @@ impl RpcHandlerRegistry {
                 }
                 Err(e) => {
                     error!("虚拟机 {} 异步停止失败: {}", vm_id, e);
-                    
+
                     // 发送失败通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -423,17 +440,19 @@ impl RpcHandlerRegistry {
     }
 
     /// 处理异步重启虚拟机（内部方法，用于通知处理）
-    async fn handle_restart_vm_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+    async fn handle_restart_vm_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
         let req: serde_json::Value = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        let vm_id = req.get("vm_id")
+        let vm_id = req
+            .get("vm_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
 
-        let force = req.get("force")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let force = req.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
 
         info!("异步重启虚拟机: vm_id={}, force={}", vm_id, force);
 
@@ -517,7 +536,10 @@ impl RpcHandlerRegistry {
     // 存储管理处理
     // ========================================================================
 
-    async fn handle_create_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_create_volume(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: CreateVolumeRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
@@ -532,22 +554,25 @@ impl RpcHandlerRegistry {
             return Err(e);
         }
 
-        match self.storage.create_volume(
-            pool_id,
-            &req.volume_id,
-            &req.name,
-            req.size_gb,
-            &req.format,
-            req.source.as_deref(),  // 传递source参数到存储层
-        ).await {
+        match self
+            .storage
+            .create_volume(
+                pool_id,
+                &req.volume_id,
+                &req.name,
+                req.size_gb,
+                &req.format,
+                req.source.as_deref(), // 传递source参数到存储层
+            )
+            .await
+        {
             Ok(volume_info) => {
                 let response = CreateVolumeResponse {
                     success: true,
                     message: "存储卷创建成功".to_string(),
                     path: Some(volume_info.path),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("创建存储卷失败: {}", e);
@@ -559,7 +584,10 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_delete_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_delete_volume(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: DeleteVolumeRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
@@ -571,14 +599,17 @@ impl RpcHandlerRegistry {
             return Err(e);
         }
 
-        match self.storage.delete_volume(&req.pool_id, &req.volume_id).await {
+        match self
+            .storage
+            .delete_volume(&req.pool_id, &req.volume_id)
+            .await
+        {
             Ok(_) => {
                 let response = DeleteVolumeResponse {
                     success: true,
                     message: "存储卷已删除".to_string(),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("删除存储卷失败: {}", e);
@@ -590,11 +621,17 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_resize_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_resize_volume(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: ResizeVolumeRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        info!("调整存储卷大小: {} -> {} GB", req.volume_id, req.new_size_gb);
+        info!(
+            "调整存储卷大小: {} -> {} GB",
+            req.volume_id, req.new_size_gb
+        );
 
         // 确保存储池已注册
         if let Err(e) = self.ensure_storage_pool_registered(&req.pool_id).await {
@@ -602,14 +639,17 @@ impl RpcHandlerRegistry {
             return Err(e);
         }
 
-        match self.storage.resize_volume(&req.pool_id, &req.volume_id, req.new_size_gb).await {
+        match self
+            .storage
+            .resize_volume(&req.pool_id, &req.volume_id, req.new_size_gb)
+            .await
+        {
             Ok(_) => {
                 let response = ResizeVolumeResponse {
                     success: true,
                     message: "存储卷大小已调整".to_string(),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("调整存储卷大小失败: {}", e);
@@ -621,38 +661,17 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_snapshot_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let _req: SnapshotVolumeRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
-
-        info!("创建存储卷快照: {} -> {}", _req.volume_id, _req.snapshot_name);
-
-        // TODO: 实现快照功能
-        match Err::<String, common::Error>(common::Error::Internal("快照功能未实现".to_string())) {
-            Ok(snapshot_id) => {
-                let response = SnapshotVolumeResponse {
-                    success: true,
-                    message: "快照创建成功".to_string(),
-                    snapshot_id: Some(snapshot_id),
-                };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
-            }
-            Err(e) => {
-                error!("创建快照失败: {}", e);
-                Err(RpcError::new(
-                    RpcErrorCode::StorageError,
-                    format!("创建快照失败: {}", e),
-                ))
-            }
-        }
-    }
-
-    async fn handle_clone_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_clone_volume(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: CloneVolumeRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        info!("克隆存储卷: {} -> {} (名称: {})", req.source_volume_id, req.target_volume_id, req.target_name);
+        info!(
+            "克隆存储卷: {} -> {} (名称: {})",
+            req.source_volume_id, req.target_volume_id, req.target_name
+        );
 
         // 确保存储池已注册
         if let Err(e) = self.ensure_storage_pool_registered(&req.pool_id).await {
@@ -660,12 +679,16 @@ impl RpcHandlerRegistry {
             return Err(e);
         }
 
-        match self.storage.clone_volume(
-            &req.pool_id,
-            &req.source_volume_id,
-            &req.target_volume_id,
-            &req.target_name,
-        ).await {
+        match self
+            .storage
+            .clone_volume(
+                &req.pool_id,
+                &req.source_volume_id,
+                &req.target_volume_id,
+                &req.target_name,
+            )
+            .await
+        {
             Ok(volume_info) => {
                 let response = CloneVolumeResponse {
                     success: true,
@@ -684,7 +707,10 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_get_volume_info(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_get_volume_info(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: GetVolumeInfoRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
@@ -696,10 +722,13 @@ impl RpcHandlerRegistry {
             return Err(e);
         }
 
-        match self.storage.get_volume_info(&req.pool_id, &req.volume_id).await {
+        match self
+            .storage
+            .get_volume_info(&req.pool_id, &req.volume_id)
+            .await
+        {
             Ok(volume_info) => {
-                serde_json::to_value(&volume_info)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&volume_info).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("获取存储卷信息失败: {}", e);
@@ -711,14 +740,17 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_list_volumes(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_list_volumes(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: ListVolumesRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
         info!("列出存储卷: pool_id={:?}", req.pool_id);
 
         let pool_id = req.pool_id.as_deref().unwrap_or("");
-        
+
         // 如果指定了存储池，确保已注册
         if !pool_id.is_empty() {
             if let Err(e) = self.ensure_storage_pool_registered(pool_id).await {
@@ -730,8 +762,9 @@ impl RpcHandlerRegistry {
         match self.storage.list_volumes(pool_id).await {
             Ok(volumes) => {
                 // 转换为 common::ws_rpc::VolumeInfo
-                let rpc_volumes: Vec<common::ws_rpc::VolumeInfo> = volumes.iter().map(|v| {
-                    common::ws_rpc::VolumeInfo {
+                let rpc_volumes: Vec<common::ws_rpc::VolumeInfo> = volumes
+                    .iter()
+                    .map(|v| common::ws_rpc::VolumeInfo {
                         volume_id: v.volume_id.clone(),
                         name: v.name.clone(),
                         path: v.path.clone(),
@@ -739,12 +772,13 @@ impl RpcHandlerRegistry {
                         actual_size_gb: v.actual_size_gb,
                         format: v.format.clone(),
                         status: v.status.clone(),
-                    }
-                }).collect();
-                
-                let response = ListVolumesResponse { volumes: rpc_volumes };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                    })
+                    .collect();
+
+                let response = ListVolumesResponse {
+                    volumes: rpc_volumes,
+                };
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("列出存储卷失败: {}", e);
@@ -757,27 +791,33 @@ impl RpcHandlerRegistry {
     // 网络管理处理
     // ========================================================================
 
-    async fn handle_create_network(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_create_network(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: CreateNetworkRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
         info!("创建网络: {} (ID: {})", req.name, req.network_id);
 
         let vlan_id = req.vlan_id.as_ref().and_then(|v| v.parse::<u32>().ok());
-        match self.network.create_network(
-            &req.network_id,
-            &req.name,
-            &req.network_type,
-            &req.bridge_name,
-            vlan_id,
-        ).await {
+        match self
+            .network
+            .create_network(
+                &req.network_id,
+                &req.name,
+                &req.network_type,
+                &req.bridge_name,
+                vlan_id,
+            )
+            .await
+        {
             Ok(_) => {
                 let response = CreateNetworkResponse {
                     success: true,
                     message: "网络创建成功".to_string(),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("创建网络失败: {}", e);
@@ -789,20 +829,26 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_delete_network(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_delete_network(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: DeleteNetworkRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
         info!("删除网络: {}", req.network_id);
 
-        match self.network.delete_network(&req.network_id, "bridge", None).await {
+        match self
+            .network
+            .delete_network(&req.network_id, "bridge", None)
+            .await
+        {
             Ok(_) => {
                 let response = DeleteNetworkResponse {
                     success: true,
                     message: "网络已删除".to_string(),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("删除网络失败: {}", e);
@@ -814,20 +860,26 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_attach_interface(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_attach_interface(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: AttachInterfaceRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
         info!("附加网络接口到虚拟机: {}", req.vm_id);
 
-        match self.network.attach_interface(&req.vm_id, &req.interface.bridge_name).await {
+        match self
+            .network
+            .attach_interface(&req.vm_id, &req.interface.bridge_name)
+            .await
+        {
             Ok(_) => {
                 let response = AttachInterfaceResponse {
                     success: true,
                     message: "网络接口已附加".to_string(),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("附加网络接口失败: {}", e);
@@ -839,20 +891,26 @@ impl RpcHandlerRegistry {
         }
     }
 
-    async fn handle_detach_interface(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
+    async fn handle_detach_interface(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
         let req: DetachInterfaceRequest = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
         info!("从虚拟机分离网络接口: {}", req.vm_id);
 
-        match self.network.detach_interface(&req.vm_id, &req.mac_address).await {
+        match self
+            .network
+            .detach_interface(&req.vm_id, &req.mac_address)
+            .await
+        {
             Ok(_) => {
                 let response = DetachInterfaceResponse {
                     success: true,
                     message: "网络接口已分离".to_string(),
                 };
-                serde_json::to_value(&response)
-                    .map_err(|e| RpcError::serialization_error(e))
+                serde_json::to_value(&response).map_err(|e| RpcError::serialization_error(e))
             }
             Err(e) => {
                 error!("分离网络接口失败: {}", e);
@@ -863,86 +921,127 @@ impl RpcHandlerRegistry {
             }
         }
     }
-    
+
     /// 确保网络 Bridge 存在并可用，如果不存在则根据网络信息自动创建
-    /// 
+    ///
     /// 功能：
     /// 1. 检查 Bridge 是否存在
     /// 2. 如果不存在，从 Bridge 名称推断 VLAN ID 并自动创建网络
     /// 3. 验证 Bridge 是否启动并可用
-    async fn ensure_network_bridge(&self, network_id: &str, bridge_name: &str) -> Result<(), RpcError> {
+    async fn ensure_network_bridge(
+        &self,
+        network_id: &str,
+        bridge_name: &str,
+    ) -> Result<(), RpcError> {
         // 检查 Bridge 是否存在
         if !self.network.bridge_exists(bridge_name).await {
             info!("网络 Bridge '{}' 不存在，开始自动创建", bridge_name);
-            
+
             // 从 bridge_name 推断 VLAN ID（格式：br-vlan100）
             let vlan_id = if bridge_name.starts_with("br-vlan") {
-                bridge_name.strip_prefix("br-vlan")
+                bridge_name
+                    .strip_prefix("br-vlan")
                     .and_then(|s| s.parse::<u32>().ok())
             } else {
                 None
             };
-            
+
             if let Some(vlan) = vlan_id {
                 // 自动创建 VLAN 网络（包括 Bridge 和 VLAN 子接口）
-                if let Err(e) = self.network.create_network(
-                    network_id,
-                    &format!("auto-created-{}", network_id),
-                    "bridge",
-                    bridge_name,
-                    Some(vlan),
-                ).await {
+                if let Err(e) = self
+                    .network
+                    .create_network(
+                        network_id,
+                        &format!("auto-created-{}", network_id),
+                        "bridge",
+                        bridge_name,
+                        Some(vlan),
+                    )
+                    .await
+                {
                     error!("自动创建 VLAN 网络失败: {}", e);
                     return Err(RpcError::new(
                         RpcErrorCode::NetworkError,
                         format!("自动创建 VLAN 网络失败: {}", e),
                     ));
                 }
-                info!("成功自动创建 VLAN 网络: network_id={}, bridge={}, vlan={}", network_id, bridge_name, vlan);
+                info!(
+                    "成功自动创建 VLAN 网络: network_id={}, bridge={}, vlan={}",
+                    network_id, bridge_name, vlan
+                );
             } else {
                 // 自动创建无 VLAN 网络（直接使用 Provider 接口）
-                if let Err(e) = self.network.create_network(
-                    network_id,
-                    &format!("auto-created-{}", network_id),
-                    "bridge",
-                    bridge_name,
-                    None,
-                ).await {
+                if let Err(e) = self
+                    .network
+                    .create_network(
+                        network_id,
+                        &format!("auto-created-{}", network_id),
+                        "bridge",
+                        bridge_name,
+                        None,
+                    )
+                    .await
+                {
                     error!("自动创建无 VLAN 网络失败: {}", e);
                     return Err(RpcError::new(
                         RpcErrorCode::NetworkError,
                         format!("自动创建无 VLAN 网络失败: {}", e),
                     ));
                 }
-                info!("成功自动创建无 VLAN 网络: network_id={}, bridge={}", network_id, bridge_name);
+                info!(
+                    "成功自动创建无 VLAN 网络: network_id={}, bridge={}",
+                    network_id, bridge_name
+                );
             }
         }
-        
+
         // 检查 Bridge 是否启动并可用
         if !self.network.is_bridge_up(bridge_name).await {
             return Err(RpcError::new(
                 RpcErrorCode::NetworkError,
-                format!("网络 Bridge '{}' 未启动或不可用，请检查网络配置", bridge_name),
+                format!(
+                    "网络 Bridge '{}' 未启动或不可用，请检查网络配置",
+                    bridge_name
+                ),
             ));
         }
-        
-        info!("网络配置完成: network_id={}, bridge={}", network_id, bridge_name);
+
+        info!(
+            "网络配置完成: network_id={}, bridge={}",
+            network_id, bridge_name
+        );
         Ok(())
     }
 
     /// 处理挂载存储卷请求
-    async fn handle_attach_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let request: AttachVolumeRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::new(
+    async fn handle_attach_volume(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
+        let request: AttachVolumeRequest = serde_json::from_value(payload).map_err(|e| {
+            RpcError::new(
                 RpcErrorCode::InvalidRequest,
                 format!("解析请求参数失败: {}", e),
-            ))?;
+            )
+        })?;
 
-        info!("🔗 挂载存储卷到虚拟机: vm_id={}, volume_id={}", request.vm_id, request.volume_id);
+        info!(
+            "🔗 挂载存储卷到虚拟机: vm_id={}, volume_id={}",
+            request.vm_id, request.volume_id
+        );
 
         // 检查虚拟机是否存在
-        if !self.hypervisor.vm_exists(&request.vm_id).await
-            .map_err(|e| RpcError::new(RpcErrorCode::VmOperationFailed, format!("检查虚拟机失败: {}", e)))? {
+        if !self
+            .hypervisor
+            .vm_exists(&request.vm_id)
+            .await
+            .map_err(|e| {
+                RpcError::new(
+                    RpcErrorCode::VmOperationFailed,
+                    format!("检查虚拟机失败: {}", e),
+                )
+            })?
+        {
             return Err(RpcError::new(
                 RpcErrorCode::VmNotFound,
                 format!("虚拟机不存在: {}", request.vm_id),
@@ -950,29 +1049,41 @@ impl RpcHandlerRegistry {
         }
 
         // 调用虚拟化管理器挂载存储卷
-        match self.hypervisor.attach_volume(
-            &request.vm_id,
-            &request.volume_id,
-            &request.volume_path,
-            request.bus_type,
-            request.device_type,
-            &request.format,
-        ).await {
+        match self
+            .hypervisor
+            .attach_volume(
+                &request.vm_id,
+                &request.volume_id,
+                &request.volume_path,
+                request.bus_type,
+                request.device_type,
+                &request.format,
+            )
+            .await
+        {
             Ok(device) => {
-                info!("✅ 存储卷挂载成功: vm_id={}, volume_id={}, device={}", 
-                      request.vm_id, request.volume_id, device);
-                
+                info!(
+                    "✅ 存储卷挂载成功: vm_id={}, volume_id={}, device={}",
+                    request.vm_id, request.volume_id, device
+                );
+
                 let response = AttachVolumeResponse {
                     success: true,
                     message: "存储卷挂载成功".to_string(),
                     device: Some(device),
                 };
-                Ok(serde_json::to_value(response)
-                    .map_err(|e| RpcError::new(RpcErrorCode::InternalError, format!("序列化响应失败: {}", e)))?)
+                Ok(serde_json::to_value(response).map_err(|e| {
+                    RpcError::new(
+                        RpcErrorCode::InternalError,
+                        format!("序列化响应失败: {}", e),
+                    )
+                })?)
             }
             Err(e) => {
-                error!("❌ 存储卷挂载失败: vm_id={}, volume_id={}, error={}", 
-                       request.vm_id, request.volume_id, e);
+                error!(
+                    "❌ 存储卷挂载失败: vm_id={}, volume_id={}, error={}",
+                    request.vm_id, request.volume_id, e
+                );
                 Err(RpcError::new(
                     RpcErrorCode::VmOperationFailed,
                     format!("存储卷挂载失败: {}", e),
@@ -982,19 +1093,34 @@ impl RpcHandlerRegistry {
     }
 
     /// 处理分离存储卷请求
-    async fn handle_detach_volume(&self, payload: serde_json::Value) -> Result<serde_json::Value, RpcError> {
-        let request: DetachVolumeRequest = serde_json::from_value(payload)
-            .map_err(|e| RpcError::new(
+    async fn handle_detach_volume(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
+        let request: DetachVolumeRequest = serde_json::from_value(payload).map_err(|e| {
+            RpcError::new(
                 RpcErrorCode::InvalidRequest,
                 format!("解析请求参数失败: {}", e),
-            ))?;
+            )
+        })?;
 
-        info!("🔌 从虚拟机分离存储卷: vm_id={}, volume_id={}", 
-              request.vm_id, request.volume_id);
+        info!(
+            "🔌 从虚拟机分离存储卷: vm_id={}, volume_id={}",
+            request.vm_id, request.volume_id
+        );
 
         // 检查虚拟机是否存在
-        if !self.hypervisor.vm_exists(&request.vm_id).await
-            .map_err(|e| RpcError::new(RpcErrorCode::VmOperationFailed, format!("检查虚拟机失败: {}", e)))? {
+        if !self
+            .hypervisor
+            .vm_exists(&request.vm_id)
+            .await
+            .map_err(|e| {
+                RpcError::new(
+                    RpcErrorCode::VmOperationFailed,
+                    format!("检查虚拟机失败: {}", e),
+                )
+            })?
+        {
             return Err(RpcError::new(
                 RpcErrorCode::VmNotFound,
                 format!("虚拟机不存在: {}", request.vm_id),
@@ -1002,24 +1128,33 @@ impl RpcHandlerRegistry {
         }
 
         // 调用虚拟化管理器分离存储卷
-        match self.hypervisor.detach_volume(
-            &request.vm_id,
-            &request.volume_id,
-        ).await {
+        match self
+            .hypervisor
+            .detach_volume(&request.vm_id, &request.volume_id)
+            .await
+        {
             Ok(_) => {
-                info!("✅ 存储卷分离成功: vm_id={}, volume_id={}", 
-                      request.vm_id, request.volume_id);
-                
+                info!(
+                    "✅ 存储卷分离成功: vm_id={}, volume_id={}",
+                    request.vm_id, request.volume_id
+                );
+
                 let response = DetachVolumeResponse {
                     success: true,
                     message: "存储卷分离成功".to_string(),
                 };
-                Ok(serde_json::to_value(response)
-                    .map_err(|e| RpcError::new(RpcErrorCode::InternalError, format!("序列化响应失败: {}", e)))?)
+                Ok(serde_json::to_value(response).map_err(|e| {
+                    RpcError::new(
+                        RpcErrorCode::InternalError,
+                        format!("序列化响应失败: {}", e),
+                    )
+                })?)
             }
             Err(e) => {
-                error!("❌ 存储卷分离失败: vm_id={}, volume_id={}, error={}", 
-                       request.vm_id, request.volume_id, e);
+                error!(
+                    "❌ 存储卷分离失败: vm_id={}, volume_id={}, error={}",
+                    request.vm_id, request.volume_id, e
+                );
                 Err(RpcError::new(
                     RpcErrorCode::VmOperationFailed,
                     format!("存储卷分离失败: {}", e),
@@ -1029,31 +1164,40 @@ impl RpcHandlerRegistry {
     }
 
     /// 处理异步挂载存储卷（内部方法，用于通知处理）
-    async fn handle_attach_volume_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+    async fn handle_attach_volume_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
         let req: serde_json::Value = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        let vm_id = req.get("vm_id")
+        let vm_id = req
+            .get("vm_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
 
-        let volume_id = req.get("volume_id")
+        let volume_id = req
+            .get("volume_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?;
 
-        let volume_path = req.get("volume_path")
+        let volume_path = req
+            .get("volume_path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 volume_path 参数".to_string()))?;
 
-        let bus_type = req.get("bus_type")
+        let bus_type = req
+            .get("bus_type")
             .and_then(|v| v.as_str())
             .unwrap_or("virtio");
 
-        let device_type = req.get("device_type")
+        let device_type = req
+            .get("device_type")
             .and_then(|v| v.as_str())
             .unwrap_or("disk");
 
-        let format = req.get("format")
+        let format = req
+            .get("format")
             .and_then(|v| v.as_str())
             .unwrap_or("qcow2");
 
@@ -1068,7 +1212,7 @@ impl RpcHandlerRegistry {
         let device_type = device_type.to_string();
         let format = format.to_string();
         let notification_sender = self.notification_sender.clone();
-        
+
         tokio::spawn(async move {
             // 转换字符串为枚举类型
             let bus_type_enum = match bus_type.as_str() {
@@ -1084,17 +1228,20 @@ impl RpcHandlerRegistry {
                 _ => DiskDeviceType::Disk,
             };
 
-            match hypervisor.attach_volume(
-                &vm_id,
-                &volume_id,
-                &volume_path,
-                bus_type_enum,
-                device_type_enum,
-                &format,
-            ).await {
+            match hypervisor
+                .attach_volume(
+                    &vm_id,
+                    &volume_id,
+                    &volume_path,
+                    bus_type_enum,
+                    device_type_enum,
+                    &format,
+                )
+                .await
+            {
                 Ok(_) => {
                     info!("虚拟机 {} 存储卷 {} 异步挂载成功", vm_id, volume_id);
-                    
+
                     // 发送成功通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -1113,7 +1260,7 @@ impl RpcHandlerRegistry {
                 }
                 Err(e) => {
                     error!("虚拟机 {} 存储卷 {} 异步挂载失败: {}", vm_id, volume_id, e);
-                    
+
                     // 发送失败通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -1137,15 +1284,20 @@ impl RpcHandlerRegistry {
     }
 
     /// 处理异步分离存储卷（内部方法，用于通知处理）
-    async fn handle_detach_volume_async_internal(&self, payload: serde_json::Value) -> Result<(), RpcError> {
+    async fn handle_detach_volume_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
         let req: serde_json::Value = serde_json::from_value(payload)
             .map_err(|e| RpcError::invalid_params(format!("参数错误: {}", e)))?;
 
-        let vm_id = req.get("vm_id")
+        let vm_id = req
+            .get("vm_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 vm_id 参数".to_string()))?;
 
-        let volume_id = req.get("volume_id")
+        let volume_id = req
+            .get("volume_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?;
 
@@ -1156,12 +1308,12 @@ impl RpcHandlerRegistry {
         let vm_id = vm_id.to_string();
         let volume_id = volume_id.to_string();
         let notification_sender = self.notification_sender.clone();
-        
+
         tokio::spawn(async move {
             match hypervisor.detach_volume(&vm_id, &volume_id).await {
                 Ok(_) => {
                     info!("虚拟机 {} 存储卷 {} 异步分离成功", vm_id, volume_id);
-                    
+
                     // 发送成功通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -1180,7 +1332,7 @@ impl RpcHandlerRegistry {
                 }
                 Err(e) => {
                     error!("虚拟机 {} 存储卷 {} 异步分离失败: {}", vm_id, volume_id, e);
-                    
+
                     // 发送失败通知到 Server
                     if let Some(sender) = notification_sender {
                         let notification = RpcMessage::notification(
@@ -1202,5 +1354,289 @@ impl RpcHandlerRegistry {
 
         Ok(())
     }
-}
 
+    /// 异步创建快照（内部方法）
+    async fn handle_create_snapshot_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
+        let snapshot_id = payload
+            .get("snapshot_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 snapshot_id 参数".to_string()))?
+            .to_string();
+
+        let volume_id = payload
+            .get("volume_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?
+            .to_string();
+
+        let snapshot_name = payload
+            .get("snapshot_name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 snapshot_name 参数".to_string()))?
+            .to_string();
+
+        let pool_id = payload
+            .get("pool_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 pool_id 参数".to_string()))?
+            .to_string();
+
+        info!(
+            "异步创建快照: snapshot_id={}, volume_id={}, snapshot_name={}",
+            snapshot_id, volume_id, snapshot_name
+        );
+
+        // 确保存储池已注册（在启动异步任务前检查）
+        if let Err(e) = self.ensure_storage_pool_registered(&pool_id).await {
+            error!("存储池 {} 未注册: {}", pool_id, e);
+            return Err(e);
+        }
+
+        // 克隆必要的数据用于异步任务
+        let storage = self.storage.clone();
+        let notification_sender = self.notification_sender.clone();
+        let snapshot_id_clone = snapshot_id.clone();
+        let pool_id_clone = pool_id.clone();
+        let volume_id_clone = volume_id.clone();
+
+        // 异步执行快照创建
+        tokio::spawn(async move {
+            // 执行快照创建
+            match storage
+                .create_snapshot(&pool_id_clone, &volume_id_clone, &snapshot_id_clone)
+                .await
+            {
+                Ok(snapshot_tag) => {
+                    info!(
+                        "快照 {} 创建成功, snapshot_tag={}",
+                        snapshot_id_clone, snapshot_tag
+                    );
+
+                    // 发送成功通知到 Server，包含 snapshot_tag
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "snapshot_operation_completed",
+                            serde_json::json!({
+                                "snapshot_id": snapshot_id_clone,
+                                "operation": "create_snapshot",
+                                "success": true,
+                                "message": format!("snapshot_tag:{}", snapshot_tag)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送完成通知失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("快照 {} 创建失败: {}", snapshot_id_clone, e);
+
+                    // 发送失败通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "snapshot_operation_completed",
+                            serde_json::json!({
+                                "snapshot_id": snapshot_id_clone,
+                                "operation": "create_snapshot",
+                                "success": false,
+                                "message": format!("快照创建失败: {}", e)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送失败通知失败: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// 异步删除快照（内部方法）
+    async fn handle_delete_snapshot_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
+        let snapshot_id = payload
+            .get("snapshot_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 snapshot_id 参数".to_string()))?
+            .to_string();
+
+        let volume_id = payload
+            .get("volume_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?
+            .to_string();
+
+        let pool_id = payload
+            .get("pool_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 pool_id 参数".to_string()))?
+            .to_string();
+
+        info!(
+            "异步删除快照: snapshot_id={}, volume_id={}",
+            snapshot_id, volume_id
+        );
+
+        // 确保存储池已注册（在启动异步任务前检查）
+        if let Err(e) = self.ensure_storage_pool_registered(&pool_id).await {
+            error!("存储池 {} 未注册: {}", pool_id, e);
+            return Err(e);
+        }
+
+        // 克隆必要的数据用于异步任务
+        let storage = self.storage.clone();
+        let notification_sender = self.notification_sender.clone();
+        let snapshot_id_clone = snapshot_id.clone();
+        let pool_id_clone = pool_id.clone();
+        let volume_id_clone = volume_id.clone();
+
+        // 异步执行快照删除
+        tokio::spawn(async move {
+            // 执行快照删除
+            match storage
+                .delete_snapshot(&pool_id_clone, &volume_id_clone, &snapshot_id_clone)
+                .await
+            {
+                Ok(_) => {
+                    info!("快照 {} 删除成功", snapshot_id_clone);
+
+                    // 发送成功通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "snapshot_operation_completed",
+                            serde_json::json!({
+                                "snapshot_id": snapshot_id_clone,
+                                "operation": "delete_snapshot",
+                                "success": true,
+                                "message": "快照删除成功"
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送完成通知失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("快照 {} 删除失败: {}", snapshot_id_clone, e);
+
+                    // 发送失败通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "snapshot_operation_completed",
+                            serde_json::json!({
+                                "snapshot_id": snapshot_id_clone,
+                                "operation": "delete_snapshot",
+                                "success": false,
+                                "message": format!("快照删除失败: {}", e)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送失败通知失败: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// 异步恢复快照（内部方法）
+    async fn handle_restore_snapshot_async_internal(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<(), RpcError> {
+        let snapshot_id = payload
+            .get("snapshot_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 snapshot_id 参数".to_string()))?
+            .to_string();
+
+        let volume_id = payload
+            .get("volume_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 volume_id 参数".to_string()))?
+            .to_string();
+
+        let pool_id = payload
+            .get("pool_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("缺少 pool_id 参数".to_string()))?
+            .to_string();
+
+        info!(
+            "异步恢复快照: snapshot_id={}, volume_id={}",
+            snapshot_id, volume_id
+        );
+
+        // 确保存储池已注册（在启动异步任务前检查）
+        if let Err(e) = self.ensure_storage_pool_registered(&pool_id).await {
+            error!("存储池 {} 未注册: {}", pool_id, e);
+            return Err(e);
+        }
+
+        // 克隆必要的数据用于异步任务
+        let storage = self.storage.clone();
+        let notification_sender = self.notification_sender.clone();
+        let snapshot_id_clone = snapshot_id.clone();
+        let pool_id_clone = pool_id.clone();
+        let volume_id_clone = volume_id.clone();
+
+        // 异步执行快照恢复
+        tokio::spawn(async move {
+            // 执行快照恢复
+            match storage
+                .restore_snapshot(&pool_id_clone, &volume_id_clone, &snapshot_id_clone)
+                .await
+            {
+                Ok(_) => {
+                    info!("快照 {} 恢复成功", snapshot_id_clone);
+
+                    // 发送成功通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "snapshot_operation_completed",
+                            serde_json::json!({
+                                "snapshot_id": snapshot_id_clone,
+                                "operation": "restore_snapshot",
+                                "success": true,
+                                "message": "快照恢复成功"
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送完成通知失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("快照 {} 恢复失败: {}", snapshot_id_clone, e);
+
+                    // 发送失败通知到 Server
+                    if let Some(sender) = notification_sender {
+                        let notification = RpcMessage::notification(
+                            "snapshot_operation_completed",
+                            serde_json::json!({
+                                "snapshot_id": snapshot_id_clone,
+                                "operation": "restore_snapshot",
+                                "success": false,
+                                "message": format!("快照恢复失败: {}", e)
+                            }),
+                        );
+                        if let Err(e) = sender.send(notification) {
+                            error!("发送失败通知失败: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+}

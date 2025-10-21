@@ -55,7 +55,11 @@ import {
   ExpandOutline,
   CopyOutline,
   // 更多操作图标
-  MoreOutline
+  MoreOutline,
+  // 快照相关图标
+  CameraOutline,
+  RollbackOutline,
+  RedoOutline,
 } from '@ant-design/icons-angular/icons';
 
 export const icons = [
@@ -115,5 +119,9 @@ export const icons = [
   ExpandOutline,
   CopyOutline,
   // 更多操作图标
-  MoreOutline
+  MoreOutline,
+  // 快照相关图标
+  CameraOutline,
+  RollbackOutline,
+  RedoOutline,
 ];

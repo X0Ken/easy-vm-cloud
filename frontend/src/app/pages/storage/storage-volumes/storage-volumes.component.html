@@ -6,11 +6,7 @@
         <p>管理系统中的存储卷资源</p>
       </div>
       <div class="header-actions">
-        <button 
-          nz-button 
-          nzType="primary" 
-          (click)="showCreateVolumeModal()"
-        >
+        <button nz-button nzType="primary" (click)="showCreateVolumeModal()">
           <span nz-icon nzType="plus"></span>
           新建存储卷
         </button>
@@ -18,8 +14,8 @@
     </div>
 
     <nz-spin [nzSpinning]="loading">
-      <nz-table 
-        #volumesTable 
+      <nz-table
+        #volumesTable
         [nzData]="storageVolumes"
         [nzPageSize]="pagination.per_page"
         [nzPageIndex]="pagination.current_page"
@@ -52,7 +48,7 @@
             <td>
               <div class="pool-info">
                 <strong>{{ volume.pool_name || 'Unknown' }}</strong>
-                <br>
+                <br />
                 <small class="pool-id">ID: {{ volume.pool_id }}</small>
               </div>
             </td>
@@ -67,7 +63,7 @@
             <td>
               <div class="vm-info" *ngIf="volume.vm_id; else noVm">
                 <strong>{{ volume.vm_name || 'Unknown VM' }}</strong>
-                <br>
+                <br />
                 <small class="vm-id">ID: {{ volume.vm_id }}</small>
               </div>
               <ng-template #noVm>
@@ -75,16 +71,22 @@
               </ng-template>
             </td>
             <td>
-              <span class="time-info">{{ volume.created_at | date:'yyyy-MM-dd HH:mm' }}</span>
+              <span class="time-info">{{ volume.created_at | date: 'yyyy-MM-dd HH:mm' }}</span>
             </td>
             <td>
               <div class="action-buttons">
                 <!-- 主要操作按钮 -->
-                <button nz-button nzType="link" nzSize="small" (click)="showVolumeDetails(volume)" class="action-btn detail-btn">
+                <button
+                  nz-button
+                  nzType="link"
+                  nzSize="small"
+                  (click)="showVolumeDetails(volume)"
+                  class="action-btn detail-btn"
+                >
                   <span nz-icon nzType="eye"></span>
                   详情
                 </button>
-                
+
                 <!-- 更多操作下拉菜单 -->
                 <a nz-dropdown [nzDropdownMenu]="menu" class="action-btn more-btn">
                   更多
@@ -103,6 +105,10 @@
                     <li nz-menu-item (click)="showResizeVolumeModal(volume)">
                       <span nz-icon nzType="expand"></span>
                       扩容
+                    </li>
+                    <li nz-menu-item (click)="manageSnapshots(volume)">
+                      <span nz-icon nzType="camera"></span>
+                      快照管理
                     </li>
                     <li nz-menu-divider></li>
                     <li nz-menu-item nzDanger (click)="deleteVolume(volume)">
@@ -133,9 +139,9 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">存储卷名称</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            placeholder="请输入存储卷名称" 
+          <input
+            nz-input
+            placeholder="请输入存储卷名称"
             [(ngModel)]="volumeFormData.name"
             name="name"
           />
@@ -145,16 +151,16 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">存储池</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-select 
-            nzPlaceHolder="请选择存储池" 
+          <nz-select
+            nzPlaceHolder="请选择存储池"
             [(ngModel)]="volumeFormData.pool_id"
             name="pool_id"
             nzAllowClear
             [nzDisabled]="isEditMode"
           >
-            <nz-option 
-              *ngFor="let pool of storagePools" 
-              [nzValue]="pool.id" 
+            <nz-option
+              *ngFor="let pool of storagePools"
+              [nzValue]="pool.id"
               [nzLabel]="pool.name + ' (' + pool.node_name + ')'"
             ></nz-option>
           </nz-select>
@@ -164,7 +170,7 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">大小 (GB)</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-input-number 
+          <nz-input-number
             [(ngModel)]="volumeFormData.size_gb"
             name="size_gb"
             [nzMin]="1"
@@ -180,8 +186,8 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">卷类型</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-select 
-            nzPlaceHolder="请选择卷类型" 
+          <nz-select
+            nzPlaceHolder="请选择卷类型"
             [(ngModel)]="volumeFormData.volume_type"
             name="volume_type"
             [nzDisabled]="isEditMode"
@@ -195,8 +201,8 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">数据源</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-select 
-            nzPlaceHolder="请选择数据源" 
+          <nz-select
+            nzPlaceHolder="请选择数据源"
             [(ngModel)]="volumeFormData.dataSource"
             name="dataSource"
             [nzDisabled]="isEditMode"
@@ -211,9 +217,9 @@
       <nz-form-item *ngIf="volumeFormData.dataSource === 'url'">
         <nz-form-label [nzSpan]="6">外部URL</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            placeholder="请输入外部URL地址" 
+          <input
+            nz-input
+            placeholder="请输入外部URL地址"
             [(ngModel)]="volumeFormData.source"
             name="source"
             [disabled]="isEditMode"
@@ -238,8 +244,12 @@
         <nz-descriptions-item nzTitle="ID">{{ selectedVolume.id }}</nz-descriptions-item>
         <nz-descriptions-item nzTitle="名称">{{ selectedVolume.name }}</nz-descriptions-item>
         <nz-descriptions-item nzTitle="存储池">{{ selectedVolume.pool_name }}</nz-descriptions-item>
-        <nz-descriptions-item nzTitle="节点">{{ selectedVolume.node_name || '未分配' }}</nz-descriptions-item>
-        <nz-descriptions-item nzTitle="大小">{{ formatSize(selectedVolume.size_gb) }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="节点">{{
+          selectedVolume.node_name || '未分配'
+        }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="大小">{{
+          formatSize(selectedVolume.size_gb)
+        }}</nz-descriptions-item>
         <nz-descriptions-item nzTitle="卷类型">
           <nz-tag [nzColor]="selectedVolume.volume_type === 'qcow2' ? 'green' : 'blue'">
             {{ selectedVolume.volume_type.toUpperCase() }}
@@ -251,7 +261,10 @@
           </nz-tag>
         </nz-descriptions-item>
         <nz-descriptions-item nzTitle="数据源" [nzSpan]="2">
-          <span *ngIf="getSourceFromMetadata(selectedVolume.metadata); else noSourceDetail" class="source-url-text">
+          <span
+            *ngIf="getSourceFromMetadata(selectedVolume.metadata); else noSourceDetail"
+            class="source-url-text"
+          >
             {{ getSourceFromMetadata(selectedVolume.metadata) }}
           </span>
           <ng-template #noSourceDetail>
@@ -266,8 +279,12 @@
             <span class="no-data">未关联虚拟机</span>
           </ng-template>
         </nz-descriptions-item>
-        <nz-descriptions-item nzTitle="创建时间">{{ selectedVolume.created_at | date:'yyyy-MM-dd HH:mm:ss' }}</nz-descriptions-item>
-        <nz-descriptions-item nzTitle="更新时间">{{ selectedVolume.updated_at | date:'yyyy-MM-dd HH:mm:ss' }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="创建时间">{{
+          selectedVolume.created_at | date: 'yyyy-MM-dd HH:mm:ss'
+        }}</nz-descriptions-item>
+        <nz-descriptions-item nzTitle="更新时间">{{
+          selectedVolume.updated_at | date: 'yyyy-MM-dd HH:mm:ss'
+        }}</nz-descriptions-item>
       </nz-descriptions>
     </div>
   </div>
@@ -286,20 +303,16 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">源存储卷</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            [value]="cloneSourceVolume?.name || ''"
-            disabled
-          />
+          <input nz-input [value]="cloneSourceVolume?.name || ''" disabled />
         </nz-form-control>
       </nz-form-item>
       <nz-form-item>
         <nz-form-label [nzSpan]="6">新存储卷名称</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
+          <input
+            nz-input
             [(ngModel)]="cloneFormData.targetName"
-            placeholder="请输入新存储卷名称" 
+            placeholder="请输入新存储卷名称"
             name="targetName"
           />
         </nz-form-control>
@@ -307,11 +320,7 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">目标存储池</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            [value]="cloneSourceVolume?.pool_name || '同源存储池'"
-            disabled
-          />
+          <input nz-input [value]="cloneSourceVolume?.pool_name || '同源存储池'" disabled />
           <div class="form-help-text">
             <small>克隆将在同一存储池内创建</small>
           </div>
@@ -334,27 +343,19 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">存储卷名称</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            [value]="resizeVolume?.name || ''"
-            disabled
-          />
+          <input nz-input [value]="resizeVolume?.name || ''" disabled />
         </nz-form-control>
       </nz-form-item>
       <nz-form-item>
         <nz-form-label [nzSpan]="6">当前大小</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            [value]="formatSize(resizeVolume?.size_gb || 0)"
-            disabled
-          />
+          <input nz-input [value]="formatSize(resizeVolume?.size_gb || 0)" disabled />
         </nz-form-control>
       </nz-form-item>
       <nz-form-item>
         <nz-form-label [nzSpan]="6">新大小 (GB)</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-input-number 
+          <nz-input-number
             [(ngModel)]="resizeFormData.newSizeGb"
             name="newSizeGb"
             [nzMin]="(resizeVolume?.size_gb || 0) + 1"
@@ -371,17 +372,11 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">存储池</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <input 
-            nz-input 
-            [value]="resizeVolume?.pool_name || 'Unknown'"
-            disabled
-          />
+          <input nz-input [value]="resizeVolume?.pool_name || 'Unknown'" disabled />
         </nz-form-control>
       </nz-form-item>
     </form>
   </div>
 </nz-modal>
 
-<ng-template #totalTemplate let-total>
-  共 {{ total }} 条记录
-</ng-template>
+<ng-template #totalTemplate let-total> 共 {{ total }} 条记录 </ng-template>

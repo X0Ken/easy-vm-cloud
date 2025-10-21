@@ -1,7 +1,6 @@
 /// WebSocket RPC 数据类型定义
-/// 
+///
 /// 对应原来 proto 中定义的消息类型
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -64,7 +63,7 @@ pub struct CreateVmRequest {
     pub name: String,
     pub vcpu: u32,
     pub memory_mb: u64,
-    pub os_type: Option<String>,  // 操作系统类型: linux, windows
+    pub os_type: Option<String>, // 操作系统类型: linux, windows
     pub disks: Vec<DiskSpec>,
     pub networks: Vec<NetworkInterfaceSpec>,
     #[serde(default)]
@@ -90,8 +89,8 @@ impl Default for DiskBusType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DiskDeviceType {
-    Disk,    // 磁盘
-    Cdrom,   // 虚拟光驱
+    Disk,  // 磁盘
+    Cdrom, // 虚拟光驱
 }
 
 impl Default for DiskDeviceType {
@@ -103,9 +102,9 @@ impl Default for DiskDeviceType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiskSpec {
     pub volume_id: String,
-    pub device: String,  // 自动生成的设备名
+    pub device: String, // 自动生成的设备名
     pub volume_path: String,
-    pub bus_type: DiskBusType,      // 总线类型: virtio, scsi, ide
+    pub bus_type: DiskBusType,       // 总线类型: virtio, scsi, ide
     pub device_type: DiskDeviceType, // 设备类型: disk, cdrom
     pub format: String,              // 磁盘格式: qcow2, raw, vmdk 等
 }
@@ -236,9 +235,9 @@ pub struct CreateVolumeRequest {
     pub size_gb: u64,
     pub storage_type: String,
     pub format: String,
-    pub pool_id: String,  // 存储池ID，Agent会自动获取存储池信息
+    pub pool_id: String, // 存储池ID，Agent会自动获取存储池信息
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,  // 外部URL，用于下载初始数据
+    pub source: Option<String>, // 外部URL，用于下载初始数据
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,6 +295,32 @@ pub struct SnapshotVolumeResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteSnapshotRequest {
+    pub snapshot_id: String,
+    pub volume_id: String,
+    pub pool_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteSnapshotResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestoreSnapshotRequest {
+    pub snapshot_id: String,
+    pub volume_id: String,
+    pub pool_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestoreSnapshotResponse {
+    pub success: bool,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -417,7 +442,7 @@ pub struct AttachVolumeResponse {
     pub success: bool,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<String>,  // 生成的设备名，如 vda, vdb 等
+    pub device: Option<String>, // 生成的设备名，如 vda, vdb 等
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -458,8 +483,8 @@ pub struct NodeResourceInfo {
     pub node_id: String,
     pub cpu_cores: u32,
     pub cpu_threads: u32,
-    pub memory_total: u64,  // bytes
-    pub disk_total: u64,     // bytes
+    pub memory_total: u64, // bytes
+    pub disk_total: u64,   // bytes
     pub hypervisor_type: Option<String>,
     pub hypervisor_version: Option<String>,
     pub timestamp: i64,
@@ -470,4 +495,3 @@ pub struct NodeResourceInfoResponse {
     pub success: bool,
     pub message: String,
 }
-

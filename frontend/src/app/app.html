@@ -1,5 +1,6 @@
 <nz-layout class="app-layout">
-  <nz-sider class="menu-sidebar"
+  <nz-sider
+    class="menu-sidebar"
     nzCollapsible
     nzWidth="256px"
     nzBreakpoint="md"
@@ -8,7 +9,7 @@
   >
     <div class="sidebar-logo">
       <a routerLink="/welcome">
-        <img src="https://ng.ant.design/assets/img/logo.svg" alt="logo">
+        <img src="https://ng.ant.design/assets/img/logo.svg" alt="logo" />
         <h1>Easy VM Cloud</h1>
       </a>
     </div>
@@ -63,6 +64,12 @@
               <span>存储卷</span>
             </a>
           </li>
+          <li nz-menu-item nzMatchRouter>
+            <a routerLink="/storage/snapshots">
+              <span nz-icon nzType="camera"></span>
+              <span>快照管理</span>
+            </a>
+          </li>
         </ul>
       </li>
       <li nz-submenu [nzOpen]="networkManagementOpen" nzTitle="网络管理" nzIcon="global">
@@ -75,7 +82,12 @@
           </li>
         </ul>
       </li>
-      <li nz-submenu [nzOpen]="permissionsManagementOpen" nzTitle="权限管理" nzIcon="safety-certificate">
+      <li
+        nz-submenu
+        [nzOpen]="permissionsManagementOpen"
+        nzTitle="权限管理"
+        nzIcon="safety-certificate"
+      >
         <ul>
           <li nz-menu-item nzMatchRouter>
             <a routerLink="/permissions/users">

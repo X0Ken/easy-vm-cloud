@@ -1,7 +1,6 @@
 /// NFS 存储驱动
-/// 
+///
 /// 在 NFS 共享目录中创建和管理 qcow2/raw 格式的磁盘镜像
-
 use async_trait::async_trait;
 use common::{Error, Result};
 use std::path::{Path, PathBuf};
@@ -62,15 +61,20 @@ impl NfsDriver {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!("qemu-img info failed: {}", stderr);
-            return Err(Error::Storage(format!("Failed to detect file format: {}", stderr)));
+            return Err(Error::Storage(format!(
+                "Failed to detect file format: {}",
+                stderr
+            )));
         }
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        
+
         // 解析 qemu-img info 输出，查找 "file format:" 行
         for line in output_str.lines() {
             if line.trim().starts_with("file format:") {
-                let format = line.split(':').nth(1)
+                let format = line
+                    .split(':')
+                    .nth(1)
                     .map(|s| s.trim().to_string())
                     .unwrap_or_else(|| "raw".to_string());
                 return Ok(format);
@@ -78,7 +82,10 @@ impl NfsDriver {
         }
 
         // 如果无法检测到格式，默认为 raw
-        warn!("Could not detect file format for {:?}, defaulting to raw", file_path);
+        warn!(
+            "Could not detect file format for {:?}, defaulting to raw",
+            file_path
+        );
         Ok("raw".to_string())
     }
 
@@ -91,9 +98,10 @@ impl NfsDriver {
 
     /// 获取文件实际大小（GB）
     async fn get_file_actual_size(&self, path: &Path) -> Result<u64> {
-        let metadata = fs::metadata(path).await
+        let metadata = fs::metadata(path)
+            .await
             .map_err(|e| Error::Storage(format!("Failed to get file metadata: {}", e)))?;
-        
+
         let size_bytes = metadata.len();
         Ok(size_bytes / (1024 * 1024 * 1024))
     }
@@ -116,9 +124,9 @@ impl NfsDriver {
         let info: serde_json::Value = serde_json::from_slice(&output.stdout)
             .map_err(|e| Error::Storage(format!("Failed to parse qemu-img output: {}", e)))?;
 
-        let virtual_size = info["virtual-size"]
-            .as_u64()
-            .ok_or_else(|| Error::Storage("virtual-size not found in qemu-img output".to_string()))?;
+        let virtual_size = info["virtual-size"].as_u64().ok_or_else(|| {
+            Error::Storage("virtual-size not found in qemu-img output".to_string())
+        })?;
 
         Ok(virtual_size / (1024 * 1024 * 1024))
     }
@@ -149,7 +157,10 @@ impl NfsDriver {
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     error!("qemu-img create failed: {}", stderr);
-                    return Err(Error::Storage(format!("Failed to create qcow2 image: {}", stderr)));
+                    return Err(Error::Storage(format!(
+                        "Failed to create qcow2 image: {}",
+                        stderr
+                    )));
                 }
             }
             "raw" => {
@@ -167,7 +178,10 @@ impl NfsDriver {
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     error!("qemu-img create failed: {}", stderr);
-                    return Err(Error::Storage(format!("Failed to create raw image: {}", stderr)));
+                    return Err(Error::Storage(format!(
+                        "Failed to create raw image: {}",
+                        stderr
+                    )));
                 }
             }
             _ => {
@@ -178,7 +192,10 @@ impl NfsDriver {
             }
         }
 
-        info!("Successfully created volume {} at {:?}", volume_id, volume_path);
+        info!(
+            "Successfully created volume {} at {:?}",
+            volume_id, volume_path
+        );
 
         // 获取实际大小
         let actual_size_gb = self.get_file_actual_size(volume_path).await?;
@@ -211,10 +228,10 @@ impl NfsDriver {
 
         // 下载外部URL的内容到临时文件
         let temp_path = volume_path.with_extension("tmp");
-        
+
         // 使用curl下载文件
         let output = Command::new("curl")
-            .arg("-L")  // 跟随重定向
+            .arg("-L") // 跟随重定向
             .arg("-o")
             .arg(&temp_path)
             .arg(source_url)
@@ -225,7 +242,10 @@ impl NfsDriver {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!("curl download failed: {}", stderr);
-            return Err(Error::Storage(format!("Failed to download from URL: {}", stderr)));
+            return Err(Error::Storage(format!(
+                "Failed to download from URL: {}",
+                stderr
+            )));
         }
 
         // 检测下载文件的格式
@@ -237,8 +257,9 @@ impl NfsDriver {
             "qcow2" => {
                 // 如果检测到的格式已经是qcow2，直接重命名
                 if detected_format == "qcow2" {
-                    fs::rename(&temp_path, volume_path).await
-                        .map_err(|e| Error::Storage(format!("Failed to rename qcow2 file: {}", e)))?;
+                    fs::rename(&temp_path, volume_path).await.map_err(|e| {
+                        Error::Storage(format!("Failed to rename qcow2 file: {}", e))
+                    })?;
                 } else {
                     // 使用 qemu-img 转换到 qcow2 格式
                     let output = Command::new("qemu-img")
@@ -253,20 +274,26 @@ impl NfsDriver {
                         .arg(volume_path)
                         .output()
                         .await
-                        .map_err(|e| Error::Storage(format!("Failed to run qemu-img convert: {}", e)))?;
+                        .map_err(|e| {
+                            Error::Storage(format!("Failed to run qemu-img convert: {}", e))
+                        })?;
 
                     if !output.status.success() {
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         error!("qemu-img convert failed: {}", stderr);
-                        return Err(Error::Storage(format!("Failed to convert to qcow2: {}", stderr)));
+                        return Err(Error::Storage(format!(
+                            "Failed to convert to qcow2: {}",
+                            stderr
+                        )));
                     }
                 }
             }
             "raw" => {
                 // 如果检测到的格式已经是raw，直接重命名
                 if detected_format == "raw" {
-                    fs::rename(&temp_path, volume_path).await
-                        .map_err(|e| Error::Storage(format!("Failed to rename downloaded file: {}", e)))?;
+                    fs::rename(&temp_path, volume_path).await.map_err(|e| {
+                        Error::Storage(format!("Failed to rename downloaded file: {}", e))
+                    })?;
                 } else {
                     // 转换到 raw 格式
                     let output = Command::new("qemu-img")
@@ -279,12 +306,17 @@ impl NfsDriver {
                         .arg(volume_path)
                         .output()
                         .await
-                        .map_err(|e| Error::Storage(format!("Failed to run qemu-img convert: {}", e)))?;
+                        .map_err(|e| {
+                            Error::Storage(format!("Failed to run qemu-img convert: {}", e))
+                        })?;
 
                     if !output.status.success() {
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         error!("qemu-img convert failed: {}", stderr);
-                        return Err(Error::Storage(format!("Failed to convert to raw: {}", stderr)));
+                        return Err(Error::Storage(format!(
+                            "Failed to convert to raw: {}",
+                            stderr
+                        )));
                     }
                 }
             }
@@ -308,7 +340,10 @@ impl NfsDriver {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!("qemu-img resize failed: {}", stderr);
-            return Err(Error::Storage(format!("Failed to resize {} image: {}", format, stderr)));
+            return Err(Error::Storage(format!(
+                "Failed to resize {} image: {}",
+                format, stderr
+            )));
         }
 
         // 清理临时文件
@@ -316,7 +351,10 @@ impl NfsDriver {
             let _ = fs::remove_file(&temp_path).await;
         }
 
-        info!("Successfully created volume {} from URL at {:?}", volume_id, volume_path);
+        info!(
+            "Successfully created volume {} from URL at {:?}",
+            volume_id, volume_path
+        );
 
         // 获取实际大小
         let actual_size_gb = self.get_file_actual_size(volume_path).await?;
@@ -333,10 +371,6 @@ impl NfsDriver {
     }
 }
 
-
-
-
-
 #[async_trait]
 impl StorageDriver for NfsDriver {
     async fn create_volume(
@@ -345,7 +379,7 @@ impl StorageDriver for NfsDriver {
         name: &str,
         size_gb: u64,
         format: &str,
-        source: Option<&str>,  // 外部URL，可选
+        source: Option<&str>, // 外部URL，可选
     ) -> Result<VolumeInfo> {
         info!(
             "Creating NFS volume: id={}, name={}, size={}GB, format={}, source={:?}",
@@ -364,21 +398,29 @@ impl StorageDriver for NfsDriver {
 
         // 确保目录存在
         if let Some(parent) = volume_path.parent() {
-            fs::create_dir_all(parent).await
+            fs::create_dir_all(parent)
+                .await
                 .map_err(|e| Error::Storage(format!("Failed to create directory: {}", e)))?;
         }
 
         // 根据是否有source URL选择不同的创建方式
         if let Some(source_url) = source {
             // 从外部URL创建存储卷
-            self.create_volume_from_url_internal(volume_id, name, size_gb, format, source_url, &volume_path).await
+            self.create_volume_from_url_internal(
+                volume_id,
+                name,
+                size_gb,
+                format,
+                source_url,
+                &volume_path,
+            )
+            .await
         } else {
             // 创建空白存储卷
-            self.create_blank_volume(volume_id, name, size_gb, format, &volume_path).await
+            self.create_blank_volume(volume_id, name, size_gb, format, &volume_path)
+                .await
         }
     }
-
-
 
     async fn delete_volume(&self, volume_id: &str) -> Result<()> {
         info!("Deleting NFS volume: {}", volume_id);
@@ -389,12 +431,16 @@ impl StorageDriver for NfsDriver {
 
         for format in formats {
             let volume_path = self.get_volume_path(volume_id, format);
-            
+
             if volume_path.exists() {
-                fs::remove_file(&volume_path).await
+                fs::remove_file(&volume_path)
+                    .await
                     .map_err(|e| Error::Storage(format!("Failed to delete volume file: {}", e)))?;
-                
-                info!("Successfully deleted volume {} at {:?}", volume_id, volume_path);
+
+                info!(
+                    "Successfully deleted volume {} at {:?}",
+                    volume_id, volume_path
+                );
                 found = true;
                 break;
             }
@@ -424,9 +470,8 @@ impl StorageDriver for NfsDriver {
             }
         }
 
-        let volume_path = volume_path.ok_or_else(|| {
-            Error::NotFound(format!("Volume {} not found", volume_id))
-        })?;
+        let volume_path = volume_path
+            .ok_or_else(|| Error::NotFound(format!("Volume {} not found", volume_id)))?;
 
         // 使用 qemu-img resize 调整大小
         let output = Command::new("qemu-img")
@@ -440,7 +485,10 @@ impl StorageDriver for NfsDriver {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!("qemu-img resize failed: {}", stderr);
-            return Err(Error::Storage(format!("Failed to resize volume: {}", stderr)));
+            return Err(Error::Storage(format!(
+                "Failed to resize volume: {}",
+                stderr
+            )));
         }
 
         info!("Successfully resized volume {}", volume_id);
@@ -481,9 +529,8 @@ impl StorageDriver for NfsDriver {
             }
         }
 
-        let volume_path = volume_path.ok_or_else(|| {
-            Error::NotFound(format!("Volume {} not found", volume_id))
-        })?;
+        let volume_path = volume_path
+            .ok_or_else(|| Error::NotFound(format!("Volume {} not found", volume_id)))?;
 
         let actual_size_gb = self.get_file_actual_size(&volume_path).await?;
         let size_gb = if format == "qcow2" {
@@ -509,21 +556,24 @@ impl StorageDriver for NfsDriver {
         let mut volumes = Vec::new();
 
         // 读取目录中的所有卷文件
-        let mut entries = fs::read_dir(&self.mount_path).await
+        let mut entries = fs::read_dir(&self.mount_path)
+            .await
             .map_err(|e| Error::Storage(format!("Failed to read directory: {}", e)))?;
 
-        while let Some(entry) = entries.next_entry().await
-            .map_err(|e| Error::Storage(format!("Failed to read directory entry: {}", e)))? {
-            
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| Error::Storage(format!("Failed to read directory entry: {}", e)))?
+        {
             let path = entry.path();
-            
+
             // 只处理文件
             if !path.is_file() {
                 continue;
             }
 
             let format = Self::parse_volume_format(&path);
-            
+
             // 只处理 qcow2 和 raw 格式
             if format != "qcow2" && format != "raw" {
                 continue;
@@ -552,8 +602,8 @@ impl StorageDriver for NfsDriver {
         Ok(volumes)
     }
 
-    async fn create_snapshot(&self, volume_id: &str, snapshot_name: &str) -> Result<String> {
-        info!("Creating snapshot {} for volume {}", snapshot_name, volume_id);
+    async fn create_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<String> {
+        info!("Creating snapshot {} for volume {}", snapshot_id, volume_id);
 
         // 尝试找到卷文件
         let formats = vec!["qcow2", "raw"];
@@ -569,16 +619,15 @@ impl StorageDriver for NfsDriver {
             }
         }
 
-        let volume_path = volume_path.ok_or_else(|| {
-            Error::NotFound(format!("Volume {} not found", volume_id))
-        })?;
+        let volume_path = volume_path
+            .ok_or_else(|| Error::NotFound(format!("Volume {} not found", volume_id)))?;
 
         // qcow2 支持内部快照
         if format == "qcow2" {
             let output = Command::new("qemu-img")
                 .arg("snapshot")
                 .arg("-c")
-                .arg(snapshot_name)
+                .arg(snapshot_id)
                 .arg(&volume_path)
                 .output()
                 .await
@@ -587,20 +636,184 @@ impl StorageDriver for NfsDriver {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 error!("qemu-img snapshot failed: {}", stderr);
-                return Err(Error::Storage(format!("Failed to create snapshot: {}", stderr)));
+                return Err(Error::Storage(format!(
+                    "Failed to create snapshot: {}",
+                    stderr
+                )));
             }
 
-            info!("Successfully created snapshot {} for volume {}", snapshot_name, volume_id);
-            Ok(snapshot_name.to_string())
+            info!(
+                "Successfully created snapshot {} for volume {}",
+                snapshot_id, volume_id
+            );
+            Ok(snapshot_id.to_string())
         } else {
             // raw 格式使用拷贝创建快照
-            let snapshot_path = self.mount_path.join(format!("{}-{}.{}", volume_id, snapshot_name, format));
-            
-            fs::copy(&volume_path, &snapshot_path).await
+            let snapshot_path = self
+                .mount_path
+                .join(format!("{}-{}.{}", volume_id, snapshot_id, format));
+
+            fs::copy(&volume_path, &snapshot_path)
+                .await
                 .map_err(|e| Error::Storage(format!("Failed to copy file for snapshot: {}", e)))?;
 
             info!("Successfully created snapshot copy at {:?}", snapshot_path);
-            Ok(snapshot_name.to_string())
+            Ok(snapshot_id.to_string())
+        }
+    }
+
+    async fn delete_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<()> {
+        info!("Deleting snapshot {} for volume {}", snapshot_id, volume_id);
+
+        // 尝试找到卷文件
+        let formats = vec!["qcow2", "raw"];
+        let mut volume_path = None;
+        let mut format = "raw";
+
+        for fmt in formats {
+            let path = self.get_volume_path(volume_id, fmt);
+            if path.exists() {
+                volume_path = Some(path);
+                format = fmt;
+                break;
+            }
+        }
+
+        let volume_path = volume_path
+            .ok_or_else(|| Error::NotFound(format!("Volume {} not found", volume_id)))?;
+
+        // qcow2 支持内部快照
+        if format == "qcow2" {
+            let output = Command::new("qemu-img")
+                .arg("snapshot")
+                .arg("-d")
+                .arg(snapshot_id)
+                .arg(&volume_path)
+                .output()
+                .await
+                .map_err(|e| Error::Storage(format!("Failed to run qemu-img snapshot: {}", e)))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                error!("qemu-img snapshot delete failed: {}", stderr);
+                return Err(Error::Storage(format!(
+                    "Failed to delete snapshot: {}",
+                    stderr
+                )));
+            }
+
+            info!(
+                "Successfully deleted snapshot {} for volume {}",
+                snapshot_id, volume_id
+            );
+            Ok(())
+        } else {
+            // raw 格式删除快照文件
+            let snapshot_path = self
+                .mount_path
+                .join(format!("{}-{}.{}", volume_id, snapshot_id, format));
+
+            if snapshot_path.exists() {
+                fs::remove_file(&snapshot_path).await.map_err(|e| {
+                    Error::Storage(format!("Failed to delete snapshot file: {}", e))
+                })?;
+                info!("Successfully deleted snapshot file at {:?}", snapshot_path);
+                Ok(())
+            } else {
+                Err(Error::NotFound(format!(
+                    "Snapshot {} not found",
+                    snapshot_id
+                )))
+            }
+        }
+    }
+
+    async fn restore_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<()> {
+        info!(
+            "Restoring snapshot {} for volume {}",
+            snapshot_id, volume_id
+        );
+
+        // 尝试找到卷文件
+        let formats = vec!["qcow2", "raw"];
+        let mut volume_path = None;
+        let mut format = "raw";
+
+        for fmt in formats {
+            let path = self.get_volume_path(volume_id, fmt);
+            if path.exists() {
+                volume_path = Some(path);
+                format = fmt;
+                break;
+            }
+        }
+
+        let volume_path = volume_path
+            .ok_or_else(|| Error::NotFound(format!("Volume {} not found", volume_id)))?;
+
+        // qcow2 支持内部快照恢复
+        if format == "qcow2" {
+            let output = Command::new("qemu-img")
+                .arg("snapshot")
+                .arg("-a")
+                .arg(snapshot_id)
+                .arg(&volume_path)
+                .output()
+                .await
+                .map_err(|e| Error::Storage(format!("Failed to run qemu-img snapshot: {}", e)))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                error!("qemu-img snapshot restore failed: {}", stderr);
+                return Err(Error::Storage(format!(
+                    "Failed to restore snapshot: {}",
+                    stderr
+                )));
+            }
+
+            info!(
+                "Successfully restored snapshot {} for volume {}",
+                snapshot_id, volume_id
+            );
+            Ok(())
+        } else {
+            // raw 格式从快照文件恢复
+            let snapshot_path = self
+                .mount_path
+                .join(format!("{}-{}.{}", volume_id, snapshot_id, format));
+
+            if !snapshot_path.exists() {
+                return Err(Error::NotFound(format!(
+                    "Snapshot {} not found",
+                    snapshot_id
+                )));
+            }
+
+            // 备份当前卷
+            let backup_path = self.mount_path.join(format!("{}.backup", volume_id));
+            fs::copy(&volume_path, &backup_path)
+                .await
+                .map_err(|e| Error::Storage(format!("Failed to backup current volume: {}", e)))?;
+
+            // 从快照恢复
+            match fs::copy(&snapshot_path, &volume_path).await {
+                Ok(_) => {
+                    info!(
+                        "Successfully restored snapshot {} to volume {}",
+                        snapshot_id, volume_id
+                    );
+                    // 删除备份
+                    let _ = fs::remove_file(&backup_path).await;
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to restore snapshot: {}", e);
+                    // 尝试恢复备份
+                    let _ = fs::copy(&backup_path, &volume_path).await;
+                    let _ = fs::remove_file(&backup_path).await;
+                    Err(Error::Storage(format!("Failed to restore snapshot: {}", e)))
+                }
+            }
         }
     }
 
@@ -610,7 +823,10 @@ impl StorageDriver for NfsDriver {
         target_volume_id: &str,
         target_name: &str,
     ) -> Result<VolumeInfo> {
-        info!("Cloning volume {} to {} with name {}", source_volume_id, target_volume_id, target_name);
+        info!(
+            "Cloning volume {} to {} with name {}",
+            source_volume_id, target_volume_id, target_name
+        );
 
         // 尝试找到源卷文件
         let formats = vec!["qcow2", "raw"];
@@ -634,7 +850,10 @@ impl StorageDriver for NfsDriver {
 
         // 检查目标文件是否已存在
         if target_path.exists() {
-            return Err(Error::AlreadyExists(format!("Target volume {} already exists", target_volume_id)));
+            return Err(Error::AlreadyExists(format!(
+                "Target volume {} already exists",
+                target_volume_id
+            )));
         }
 
         // 根据格式选择克隆策略 - 使用完整数据拷贝确保独立性
@@ -653,21 +872,30 @@ impl StorageDriver for NfsDriver {
                     .arg(&target_path)
                     .output()
                     .await
-                    .map_err(|e| Error::Storage(format!("Failed to run qemu-img convert: {}", e)))?;
+                    .map_err(|e| {
+                        Error::Storage(format!("Failed to run qemu-img convert: {}", e))
+                    })?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     error!("qemu-img convert failed: {}", stderr);
-                    return Err(Error::Storage(format!("Failed to create qcow2 clone: {}", stderr)));
+                    return Err(Error::Storage(format!(
+                        "Failed to create qcow2 clone: {}",
+                        stderr
+                    )));
                 }
             }
             "raw" => {
                 // raw 格式直接拷贝
-                fs::copy(&source_path, &target_path).await
+                fs::copy(&source_path, &target_path)
+                    .await
                     .map_err(|e| Error::Storage(format!("Failed to copy raw volume: {}", e)))?;
             }
             _ => {
-                return Err(Error::Storage(format!("Unsupported volume format: {}", format)));
+                return Err(Error::Storage(format!(
+                    "Unsupported volume format: {}",
+                    format
+                )));
             }
         }
 
@@ -685,7 +913,10 @@ impl StorageDriver for NfsDriver {
             status: "available".to_string(),
         };
 
-        info!("Successfully cloned volume {} to {}", source_volume_id, target_volume_id);
+        info!(
+            "Successfully cloned volume {} to {}",
+            source_volume_id, target_volume_id
+        );
         Ok(target_info)
     }
 

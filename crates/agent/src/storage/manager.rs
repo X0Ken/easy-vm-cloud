@@ -1,7 +1,6 @@
 /// 存储管理器
-/// 
+///
 /// 负责管理多种存储驱动，根据存储类型分发请求
-
 use common::{Error, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,7 +25,10 @@ impl StorageManager {
 
     /// 注册存储池驱动
     pub async fn register_pool(&self, pool_config: StoragePoolConfig) -> Result<()> {
-        info!("Registering storage pool: {} (type: {})", pool_config.pool_name, pool_config.storage_type);
+        info!(
+            "Registering storage pool: {} (type: {})",
+            pool_config.pool_name, pool_config.storage_type
+        );
 
         let driver: Arc<dyn StorageDriver> = match pool_config.storage_type.as_str() {
             "nfs" => Arc::new(NfsDriver::new(pool_config.clone())?),
@@ -64,13 +66,17 @@ impl StorageManager {
         name: &str,
         size_gb: u64,
         format: &str,
-        source: Option<&str>,  // 外部URL，可选
+        source: Option<&str>, // 外部URL，可选
     ) -> Result<VolumeInfo> {
-        debug!("Creating volume: pool={}, id={}, name={}, size={}GB, format={}, source={:?}", 
-            pool_id, volume_id, name, size_gb, format, source);
+        debug!(
+            "Creating volume: pool={}, id={}, name={}, size={}GB, format={}, source={:?}",
+            pool_id, volume_id, name, size_gb, format, source
+        );
 
         let driver = self.get_driver(pool_id).await?;
-        driver.create_volume(volume_id, name, size_gb, format, source).await
+        driver
+            .create_volume(volume_id, name, size_gb, format, source)
+            .await
     }
 
     /// 删除存储卷
@@ -82,8 +88,16 @@ impl StorageManager {
     }
 
     /// 调整存储卷大小
-    pub async fn resize_volume(&self, pool_id: &str, volume_id: &str, new_size_gb: u64) -> Result<VolumeInfo> {
-        debug!("Resizing volume: pool={}, id={}, new_size={}GB", pool_id, volume_id, new_size_gb);
+    pub async fn resize_volume(
+        &self,
+        pool_id: &str,
+        volume_id: &str,
+        new_size_gb: u64,
+    ) -> Result<VolumeInfo> {
+        debug!(
+            "Resizing volume: pool={}, id={}, new_size={}GB",
+            pool_id, volume_id, new_size_gb
+        );
 
         let driver = self.get_driver(pool_id).await?;
         driver.resize_volume(volume_id, new_size_gb).await
@@ -106,11 +120,51 @@ impl StorageManager {
     }
 
     /// 创建快照
-    pub async fn create_snapshot(&self, pool_id: &str, volume_id: &str, snapshot_name: &str) -> Result<String> {
-        debug!("Creating snapshot: pool={}, volume={}, snapshot={}", pool_id, volume_id, snapshot_name);
+    pub async fn create_snapshot(
+        &self,
+        pool_id: &str,
+        volume_id: &str,
+        snapshot_id: &str,
+    ) -> Result<String> {
+        debug!(
+            "Creating snapshot: pool={}, volume={}, snapshot={}",
+            pool_id, volume_id, snapshot_id
+        );
 
         let driver = self.get_driver(pool_id).await?;
-        driver.create_snapshot(volume_id, snapshot_name).await
+        driver.create_snapshot(volume_id, snapshot_id).await
+    }
+
+    /// 删除快照
+    pub async fn delete_snapshot(
+        &self,
+        pool_id: &str,
+        volume_id: &str,
+        snapshot_id: &str,
+    ) -> Result<()> {
+        debug!(
+            "Deleting snapshot: pool={}, volume={}, snapshot={}",
+            pool_id, volume_id, snapshot_id
+        );
+
+        let driver = self.get_driver(pool_id).await?;
+        driver.delete_snapshot(volume_id, snapshot_id).await
+    }
+
+    /// 恢复快照
+    pub async fn restore_snapshot(
+        &self,
+        pool_id: &str,
+        volume_id: &str,
+        snapshot_id: &str,
+    ) -> Result<()> {
+        debug!(
+            "Restoring snapshot: pool={}, volume={}, snapshot={}",
+            pool_id, volume_id, snapshot_id
+        );
+
+        let driver = self.get_driver(pool_id).await?;
+        driver.restore_snapshot(volume_id, snapshot_id).await
     }
 
     /// 克隆存储卷
@@ -121,11 +175,15 @@ impl StorageManager {
         target_volume_id: &str,
         target_name: &str,
     ) -> Result<VolumeInfo> {
-        debug!("Cloning volume: pool={}, source={}, target={}, name={}", 
-            pool_id, source_volume_id, target_volume_id, target_name);
+        debug!(
+            "Cloning volume: pool={}, source={}, target={}, name={}",
+            pool_id, source_volume_id, target_volume_id, target_name
+        );
 
         let driver = self.get_driver(pool_id).await?;
-        driver.clone_volume(source_volume_id, target_volume_id, target_name).await
+        driver
+            .clone_volume(source_volume_id, target_volume_id, target_name)
+            .await
     }
 
     /// 检查存储池是否已注册
@@ -140,4 +198,3 @@ impl StorageManager {
         drivers.keys().cloned().collect()
     }
 }
-

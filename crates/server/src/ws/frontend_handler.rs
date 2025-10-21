@@ -1,7 +1,6 @@
 /// 前端 WebSocket 连接处理器
-/// 
+///
 /// 处理与前端客户端的 WebSocket 连接和消息
-
 use axum::extract::ws::{Message as AxumWsMessage, WebSocket};
 use axum::extract::{State, WebSocketUpgrade};
 use axum::response::IntoResponse;
@@ -18,13 +17,13 @@ use uuid::Uuid;
 pub struct FrontendConnection {
     /// 连接 ID
     pub connection_id: String,
-    
+
     /// 用户 ID（如果有认证）
     pub user_id: Option<String>,
-    
+
     /// 发送消息的通道
     pub sender: mpsc::UnboundedSender<FrontendMessage>,
-    
+
     /// 连接时间
     pub connected_at: chrono::DateTime<chrono::Utc>,
 }
@@ -45,6 +44,12 @@ pub enum FrontendMessage {
         status: String,
         message: Option<String>,
     },
+    /// 快照状态更新
+    SnapshotStatusUpdate {
+        snapshot_id: String,
+        status: String,
+        message: Option<String>,
+    },
     /// 任务状态更新
     TaskStatusUpdate {
         task_id: String,
@@ -59,9 +64,7 @@ pub enum FrontendMessage {
         level: String, // info, warning, error
     },
     /// 心跳响应
-    Pong {
-        timestamp: i64,
-    },
+    Pong { timestamp: i64 },
 }
 
 /// 前端连接管理器
@@ -95,7 +98,7 @@ impl FrontendConnectionManager {
 
         let mut connections = self.connections.write().await;
         connections.insert(connection_id.clone(), connection.clone());
-        
+
         info!("前端连接已注册: {}", connection_id);
         connection
     }
@@ -146,7 +149,10 @@ impl FrontendConnectionManager {
             if let Some(ref conn_user_id) = conn.user_id {
                 if conn_user_id == user_id {
                     if let Err(e) = conn.sender.send(message.clone()) {
-                        warn!("向用户 {} 的连接 {} 发送消息失败: {}", user_id, connection_id, e);
+                        warn!(
+                            "向用户 {} 的连接 {} 发送消息失败: {}",
+                            user_id, connection_id, e
+                        );
                     } else {
                         count += 1;
                     }
@@ -184,7 +190,8 @@ async fn handle_frontend_connection(socket: WebSocket, state: crate::app_state::
     let (tx, mut rx) = mpsc::unbounded_channel::<FrontendMessage>();
 
     // 注册到管理器
-    let connection = state.frontend_manager()
+    let connection = state
+        .frontend_manager()
         .register(connection_id.clone(), None, tx.clone())
         .await;
 
@@ -206,7 +213,9 @@ async fn handle_frontend_connection(socket: WebSocket, state: crate::app_state::
         while let Some(result) = ws_receiver.next().await {
             match result {
                 Ok(msg) => {
-                    if let Err(e) = handle_frontend_incoming_message(msg, &connection_clone, &state_clone).await {
+                    if let Err(e) =
+                        handle_frontend_incoming_message(msg, &connection_clone, &state_clone).await
+                    {
                         warn!("处理前端消息失败: {}", e);
                     }
                 }
@@ -245,7 +254,7 @@ async fn handle_frontend_incoming_message(
     match ws_msg {
         AxumWsMessage::Text(text) => {
             debug!("收到前端文本消息: {}", text);
-            
+
             // 解析 JSON 消息
             if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&text) {
                 if let Some(msg_type) = msg.get("type").and_then(|v| v.as_str()) {
@@ -254,7 +263,7 @@ async fn handle_frontend_incoming_message(
                             // 处理心跳
                             let timestamp = chrono::Utc::now().timestamp();
                             let pong = FrontendMessage::Pong { timestamp };
-                            
+
                             if let Err(e) = connection.sender.send(pong) {
                                 warn!("发送心跳响应失败: {}", e);
                             }
@@ -276,7 +285,7 @@ async fn handle_frontend_incoming_message(
             debug!("收到其他类型的前端消息");
         }
     }
-    
+
     Ok(())
 }
 
@@ -285,12 +294,12 @@ async fn send_frontend_message(
     sender: &mut futures_util::stream::SplitSink<WebSocket, AxumWsMessage>,
     msg: FrontendMessage,
 ) -> Result<(), String> {
-    let json = serde_json::to_string(&msg)
-        .map_err(|e| format!("序列化前端消息失败: {}", e))?;
-    
-    sender.send(AxumWsMessage::Text(json))
+    let json = serde_json::to_string(&msg).map_err(|e| format!("序列化前端消息失败: {}", e))?;
+
+    sender
+        .send(AxumWsMessage::Text(json))
         .await
         .map_err(|e| format!("发送前端 WebSocket 消息失败: {}", e))?;
-    
+
     Ok(())
 }

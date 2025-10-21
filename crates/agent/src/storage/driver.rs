@@ -1,7 +1,6 @@
 /// 存储驱动抽象层
-/// 
+///
 /// 定义统一的存储驱动接口，支持多种存储后端
-
 use async_trait::async_trait;
 use common::Result;
 use serde::{Deserialize, Serialize};
@@ -38,7 +37,7 @@ pub trait StorageDriver: Send + Sync + 'static {
         name: &str,
         size_gb: u64,
         format: &str,
-        source: Option<&str>,  // 外部URL，可选
+        source: Option<&str>, // 外部URL，可选
     ) -> Result<VolumeInfo>;
 
     /// 删除存储卷
@@ -54,7 +53,13 @@ pub trait StorageDriver: Send + Sync + 'static {
     async fn list_volumes(&self) -> Result<Vec<VolumeInfo>>;
 
     /// 创建快照
-    async fn create_snapshot(&self, volume_id: &str, snapshot_name: &str) -> Result<String>;
+    async fn create_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<String>;
+
+    /// 删除快照
+    async fn delete_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<()>;
+
+    /// 恢复快照
+    async fn restore_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<()>;
 
     /// 克隆存储卷
     async fn clone_volume(
@@ -67,4 +72,3 @@ pub trait StorageDriver: Send + Sync + 'static {
     /// 获取存储驱动类型
     fn driver_type(&self) -> &str;
 }
-

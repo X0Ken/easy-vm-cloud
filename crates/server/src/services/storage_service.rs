@@ -1,25 +1,30 @@
 /// 存储管理服务
-
 use chrono::Utc;
-use uuid::Uuid;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
-
-use crate::db::models::storage_pool::{
-    CreateStoragePoolDto, UpdateStoragePoolDto, StoragePoolListResponse, StoragePoolResponse,
-    Entity as StoragePoolEntity, Column as StoragePoolColumn, ActiveModel as StoragePoolActiveModel,
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
-use crate::db::models::volume::{
-    CreateVolumeDto, UpdateVolumeDto, ResizeVolumeDto, CloneVolumeDto, VolumeListResponse, VolumeResponse, VolumeStatus,
-    Entity as VolumeEntity, Column as VolumeColumn, ActiveModel as VolumeActiveModel,
+use uuid::Uuid;
+
+use crate::app_state::AppState;
+use crate::db::models::storage_pool::{
+    ActiveModel as StoragePoolActiveModel, Column as StoragePoolColumn, CreateStoragePoolDto,
+    Entity as StoragePoolEntity, StoragePoolListResponse, StoragePoolResponse,
+    UpdateStoragePoolDto,
 };
 use crate::db::models::vm::Entity as VmEntity;
-use crate::app_state::AppState;
-use common::ws_rpc::{
-    CreateVolumeRequest, DeleteVolumeRequest, ResizeVolumeRequest, SnapshotVolumeRequest, CloneVolumeRequest,
-    CreateVolumeResponse, DeleteVolumeResponse, ResizeVolumeResponse, CloneVolumeResponse,
+use crate::db::models::volume::{
+    ActiveModel as VolumeActiveModel, CloneVolumeDto, Column as VolumeColumn, CreateVolumeDto,
+    Entity as VolumeEntity, ResizeVolumeDto, UpdateVolumeDto, VolumeListResponse, VolumeResponse,
+    VolumeStatus,
 };
-use tracing::warn;
+use common::ws_rpc::{
+    CloneVolumeRequest, CloneVolumeResponse, CreateVolumeRequest, CreateVolumeResponse,
+    DeleteVolumeRequest, DeleteVolumeResponse, ResizeVolumeRequest, ResizeVolumeResponse,
+    SnapshotVolumeRequest,
+};
 use std::time::Duration;
+use tracing::warn;
 
 pub struct StorageService {
     state: AppState,
@@ -31,7 +36,10 @@ impl StorageService {
     }
 
     /// 创建存储池
-    pub async fn create_storage_pool(&self, dto: CreateStoragePoolDto) -> anyhow::Result<StoragePoolResponse> {
+    pub async fn create_storage_pool(
+        &self,
+        dto: CreateStoragePoolDto,
+    ) -> anyhow::Result<StoragePoolResponse> {
         let pool_id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
@@ -85,19 +93,22 @@ impl StorageService {
 
         // 获取所有相关的节点信息
         let mut pool_responses = Vec::new();
-        
+
         for pool in pools {
             let mut pool_response = StoragePoolResponse::from(pool.clone());
-            
+
             // 获取节点名称
             if let Some(node_id) = &pool.node_id {
-                if let Ok(node) = crate::db::models::node::Entity::find_by_id(node_id).one(db).await {
+                if let Ok(node) = crate::db::models::node::Entity::find_by_id(node_id)
+                    .one(db)
+                    .await
+                {
                     if let Some(node) = node {
                         pool_response.node_name = Some(node.hostname);
                     }
                 }
             }
-            
+
             pool_responses.push(pool_response);
         }
 
@@ -122,7 +133,11 @@ impl StorageService {
     }
 
     /// 更新存储池
-    pub async fn update_storage_pool(&self, pool_id: &str, dto: UpdateStoragePoolDto) -> anyhow::Result<StoragePoolResponse> {
+    pub async fn update_storage_pool(
+        &self,
+        pool_id: &str,
+        dto: UpdateStoragePoolDto,
+    ) -> anyhow::Result<StoragePoolResponse> {
         let db = &self.state.sea_db();
 
         let pool = StoragePoolEntity::find_by_id(pool_id)
@@ -176,9 +191,7 @@ impl StorageService {
             return Err(anyhow::anyhow!("存储池下还有存储卷，无法删除"));
         }
 
-        StoragePoolEntity::delete_by_id(pool_id)
-            .exec(db)
-            .await?;
+        StoragePoolEntity::delete_by_id(pool_id).exec(db).await?;
 
         Ok(())
     }
@@ -197,10 +210,15 @@ impl StorageService {
         let now = Utc::now();
 
         // 构建metadata，包含source信息
-        let mut metadata = dto.metadata.unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+        let mut metadata = dto
+            .metadata
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
         if let Some(source) = &dto.source {
             if let Some(metadata_obj) = metadata.as_object_mut() {
-                metadata_obj.insert("source".to_string(), serde_json::Value::String(source.clone()));
+                metadata_obj.insert(
+                    "source".to_string(),
+                    serde_json::Value::String(source.clone()),
+                );
             }
         }
 
@@ -229,24 +247,28 @@ impl StorageService {
                 size_gb: dto.size_gb as u64,
                 storage_type: pool.pool_type.clone(),
                 format: dto.volume_type.clone(),
-                pool_id: pool.id.clone(),  // Agent会自动获取存储池信息
-                source: dto.source.clone(),  // 传递外部URL
+                pool_id: pool.id.clone(),   // Agent会自动获取存储池信息
+                source: dto.source.clone(), // 传递外部URL
             };
-            
+
             // 使用 WebSocket RPC 调用 Agent 创建存储卷
-            
-            let response_msg = self.state.agent_manager()
+
+            let response_msg = self
+                .state
+                .agent_manager()
                 .call(
                     node_id,
                     "create_volume",
                     serde_json::to_value(&request)?,
-                    Duration::from_secs(120)  // 存储卷创建可能需要较长时间
+                    Duration::from_secs(120), // 存储卷创建可能需要较长时间
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
 
             let result: CreateVolumeResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+                response_msg
+                    .payload
+                    .ok_or_else(|| anyhow::anyhow!("响应无数据"))?,
             )?;
 
             if !result.success {
@@ -293,7 +315,7 @@ impl StorageService {
                 .into_tuple()
                 .all(db)
                 .await?;
-            
+
             if !pool_ids.is_empty() {
                 query = query.filter(VolumeColumn::PoolId.is_in(pool_ids));
             } else {
@@ -322,10 +344,10 @@ impl StorageService {
 
         // 获取所有相关的存储池和虚拟机信息
         let mut volume_responses = Vec::new();
-        
+
         for volume in volumes {
             let mut volume_response = VolumeResponse::from(volume.clone());
-            
+
             // 获取存储池信息（包括名称和节点信息）
             if let Ok(pool) = StoragePoolEntity::find_by_id(&volume.pool_id).one(db).await {
                 if let Some(pool) = pool {
@@ -333,7 +355,10 @@ impl StorageService {
                     volume_response.node_id = pool.node_id.clone();
                     // 获取节点名称
                     if let Some(node_id) = &pool.node_id {
-                        if let Ok(node) = crate::db::models::node::Entity::find_by_id(node_id).one(db).await {
+                        if let Ok(node) = crate::db::models::node::Entity::find_by_id(node_id)
+                            .one(db)
+                            .await
+                        {
                             if let Some(node) = node {
                                 volume_response.node_name = Some(node.hostname);
                             }
@@ -341,7 +366,7 @@ impl StorageService {
                     }
                 }
             }
-            
+
             // 获取虚拟机名称
             if let Some(vm_id) = &volume.vm_id {
                 if let Ok(vm) = VmEntity::find_by_id(vm_id).one(db).await {
@@ -350,7 +375,7 @@ impl StorageService {
                     }
                 }
             }
-            
+
             volume_responses.push(volume_response);
         }
 
@@ -375,7 +400,11 @@ impl StorageService {
     }
 
     /// 更新存储卷
-    pub async fn update_volume(&self, volume_id: &str, dto: UpdateVolumeDto) -> anyhow::Result<VolumeResponse> {
+    pub async fn update_volume(
+        &self,
+        volume_id: &str,
+        dto: UpdateVolumeDto,
+    ) -> anyhow::Result<VolumeResponse> {
         let db = &self.state.sea_db();
 
         let volume = VolumeEntity::find_by_id(volume_id)
@@ -407,7 +436,11 @@ impl StorageService {
     }
 
     /// 调整存储卷大小
-    pub async fn resize_volume(&self, volume_id: &str, dto: ResizeVolumeDto) -> anyhow::Result<VolumeResponse> {
+    pub async fn resize_volume(
+        &self,
+        volume_id: &str,
+        dto: ResizeVolumeDto,
+    ) -> anyhow::Result<VolumeResponse> {
         let db = &self.state.sea_db();
 
         let volume = VolumeEntity::find_by_id(volume_id)
@@ -429,23 +462,30 @@ impl StorageService {
                 pool_id: volume.pool_id.clone(),
             };
             // 使用 WebSocket RPC 调用 Agent 调整存储卷大小
-            
-            let response_msg = self.state.agent_manager()
+
+            let response_msg = self
+                .state
+                .agent_manager()
                 .call(
                     node_id,
                     "resize_volume",
                     serde_json::to_value(&request)?,
-                    Duration::from_secs(60)
+                    Duration::from_secs(60),
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
 
             let result: ResizeVolumeResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+                response_msg
+                    .payload
+                    .ok_or_else(|| anyhow::anyhow!("响应无数据"))?,
             )?;
 
             if !result.success {
-                return Err(anyhow::anyhow!("Agent 调整存储卷大小失败: {}", result.message));
+                return Err(anyhow::anyhow!(
+                    "Agent 调整存储卷大小失败: {}",
+                    result.message
+                ));
             }
         }
 
@@ -484,84 +524,39 @@ impl StorageService {
                 volume_id: volume_id.to_string(),
                 pool_id: volume.pool_id.clone(),
             };
-            
+
             // 使用 WebSocket RPC 调用 Agent 删除存储卷
-            
-            let response_msg = self.state.agent_manager()
+
+            let response_msg = self
+                .state
+                .agent_manager()
                 .call(
                     node_id,
                     "delete_volume",
                     serde_json::to_value(&request)?,
-                    Duration::from_secs(60)
+                    Duration::from_secs(60),
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
 
             let result: DeleteVolumeResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+                response_msg
+                    .payload
+                    .ok_or_else(|| anyhow::anyhow!("响应无数据"))?,
             )?;
 
             if !result.success {
-                warn!("Agent 删除存储卷失败: {}，将继续删除数据库记录", result.message);
+                warn!(
+                    "Agent 删除存储卷失败: {}，将继续删除数据库记录",
+                    result.message
+                );
             }
         }
 
         // 从数据库中删除
-        VolumeEntity::delete_by_id(volume_id)
-            .exec(db)
-            .await?;
+        VolumeEntity::delete_by_id(volume_id).exec(db).await?;
 
         Ok(())
-    }
-
-    /// 创建快照
-    pub async fn create_snapshot(&self, volume_id: &str, snapshot_name: String) -> anyhow::Result<String> {
-        let db = &self.state.sea_db();
-
-        let volume = VolumeEntity::find_by_id(volume_id)
-            .one(db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("存储卷不存在"))?;
-
-        // 获取存储池信息以获取节点ID
-        let pool = StoragePoolEntity::find_by_id(&volume.pool_id)
-            .one(db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("存储池不存在"))?;
-
-        // 调用 Agent 创建快照
-        if let Some(node_id) = &pool.node_id {
-            let request = SnapshotVolumeRequest {
-                volume_id: volume_id.to_string(),
-                snapshot_name: snapshot_name.clone(),
-                pool_id: volume.pool_id.clone(),
-            };
-            
-            // 使用 WebSocket RPC 调用 Agent 创建快照
-            
-            let response_msg = self.state.agent_manager()
-                .call(
-                    node_id,
-                    "snapshot_volume",
-                    serde_json::to_value(&request)?,
-                    Duration::from_secs(120)  // 快照创建可能需要较长时间
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
-
-            let result: common::ws_rpc::SnapshotVolumeResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
-            )?;
-
-            if !result.success {
-                return Err(anyhow::anyhow!("Agent 创建快照失败: {}", result.message));
-            }
-
-            return Ok(result.snapshot_id.unwrap_or_else(|| format!("{}-{}", volume_id, snapshot_name)));
-        }
-
-        // 临时返回
-        Ok(format!("{}-{}", volume_id, snapshot_name))
     }
 
     /// 克隆存储卷
@@ -576,7 +571,7 @@ impl StorageService {
 
         // 克隆必须在同一存储池内
         let target_pool_id = source_volume.pool_id.clone();
-        
+
         // 检查存储池是否存在
         let target_pool = StoragePoolEntity::find_by_id(&target_pool_id)
             .one(db)
@@ -614,25 +609,31 @@ impl StorageService {
                 target_name: dto.target_name.clone(),
                 pool_id: target_pool_id.clone(),
             };
-            
+
             // 使用 WebSocket RPC 调用 Agent 克隆存储卷
-            let response_msg = self.state.agent_manager()
+            let response_msg = self
+                .state
+                .agent_manager()
                 .call(
                     node_id,
                     "clone_volume",
                     serde_json::to_value(&request)?,
-                    Duration::from_secs(300)  // 克隆可能需要较长时间
+                    Duration::from_secs(300), // 克隆可能需要较长时间
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("WebSocket RPC 调用失败: {}", e))?;
 
             let result: CloneVolumeResponse = serde_json::from_value(
-                response_msg.payload.ok_or_else(|| anyhow::anyhow!("响应无数据"))?
+                response_msg
+                    .payload
+                    .ok_or_else(|| anyhow::anyhow!("响应无数据"))?,
             )?;
 
             if !result.success {
                 // 克隆失败，删除数据库记录
-                VolumeEntity::delete_by_id(&target_volume_id).exec(db).await?;
+                VolumeEntity::delete_by_id(&target_volume_id)
+                    .exec(db)
+                    .await?;
                 return Err(anyhow::anyhow!("Agent 克隆存储卷失败: {}", result.message));
             }
 
@@ -649,4 +650,3 @@ impl StorageService {
         Ok(VolumeResponse::from(target_volume))
     }
 }
-

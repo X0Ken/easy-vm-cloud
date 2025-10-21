@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzTagModule } from 'ng-zorro-antd/tag';
@@ -16,7 +17,15 @@ import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzDescriptionsModule } from 'ng-zorro-antd/descriptions';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { FormsModule } from '@angular/forms';
-import { StorageService, StorageVolume, StoragePool, Node, CreateStorageVolumeRequest, UpdateStorageVolumeRequest, PaginatedResponse } from '../../../services/storage.service';
+import {
+  StorageService,
+  StorageVolume,
+  StoragePool,
+  Node,
+  CreateStorageVolumeRequest,
+  UpdateStorageVolumeRequest,
+  PaginatedResponse,
+} from '../../../services/storage.service';
 
 @Component({
   selector: 'app-storage-volumes',
@@ -37,10 +46,10 @@ import { StorageService, StorageVolume, StoragePool, Node, CreateStorageVolumeRe
     NzPopconfirmModule,
     NzDescriptionsModule,
     NzDropDownModule,
-    FormsModule
+    FormsModule,
   ],
   templateUrl: './storage-volumes.component.html',
-  styleUrls: ['./storage-volumes.component.scss']
+  styleUrls: ['./storage-volumes.component.scss'],
 })
 export class StorageVolumesComponent implements OnInit {
   storageVolumes: StorageVolume[] = [];
@@ -56,12 +65,12 @@ export class StorageVolumesComponent implements OnInit {
   selectedVolume: StorageVolume | null = null;
   cloneSourceVolume: StorageVolume | null = null;
   resizeVolume: StorageVolume | null = null;
-  
+
   // 加载状态标志
   volumesLoaded = false;
   poolsLoaded = false;
   nodesLoaded = false;
-  
+
   // 分页状态
   pagination = {
     current_page: 1,
@@ -69,32 +78,33 @@ export class StorageVolumesComponent implements OnInit {
     total: 0,
     total_pages: 0,
     has_next: false,
-    has_prev: false
+    has_prev: false,
   };
-  
+
   // 存储卷表单数据
   volumeFormData = {
     name: '',
     pool_id: null as number | null,
     size_gb: 20,
     volume_type: 'qcow2' as 'qcow2' | 'raw',
-    dataSource: 'blank' as 'blank' | 'url',  // 数据源选择
-    source: null as string | null  // 外部URL
+    dataSource: 'blank' as 'blank' | 'url', // 数据源选择
+    source: null as string | null, // 外部URL
   };
 
   // 克隆表单数据
   cloneFormData = {
-    targetName: ''
+    targetName: '',
   };
 
   // 扩容表单数据
   resizeFormData = {
-    newSizeGb: 0
+    newSizeGb: 0,
   };
 
   constructor(
     private storageService: StorageService,
-    private message: NzMessageService
+    private message: NzMessageService,
+    private router: Router,
   ) {}
 
   ngOnInit(): void {
@@ -113,7 +123,7 @@ export class StorageVolumesComponent implements OnInit {
           total: response.pagination?.total || 0,
           total_pages: response.pagination?.total_pages || 0,
           has_next: response.pagination?.has_next || false,
-          has_prev: response.pagination?.has_prev || false
+          has_prev: response.pagination?.has_prev || false,
         };
         this.loading = false;
         this.volumesLoaded = true;
@@ -122,7 +132,7 @@ export class StorageVolumesComponent implements OnInit {
         console.error('获取存储卷列表失败:', error);
         this.message.error('获取存储卷列表失败');
         this.loading = false;
-      }
+      },
     });
   }
 
@@ -135,7 +145,7 @@ export class StorageVolumesComponent implements OnInit {
       error: (error) => {
         console.error('获取存储池列表失败:', error);
         this.message.error('获取存储池列表失败');
-      }
+      },
     });
   }
 
@@ -148,7 +158,7 @@ export class StorageVolumesComponent implements OnInit {
       error: (error) => {
         console.error('获取节点列表失败:', error);
         this.message.error('获取节点列表失败');
-      }
+      },
     });
   }
 
@@ -163,28 +173,28 @@ export class StorageVolumesComponent implements OnInit {
 
   getStatusColor(status: string): string {
     const statusColors: { [key: string]: string } = {
-      'active': 'green',
-      'inactive': 'red',
-      'error': 'red',
-      'available': 'green',
-      'in_use': 'blue',
+      active: 'green',
+      inactive: 'red',
+      error: 'red',
+      available: 'green',
+      in_use: 'blue',
       'in-use': 'blue',
-      'creating': 'orange',
-      'deleting': 'red'
+      creating: 'orange',
+      deleting: 'red',
     };
     return statusColors[status] || 'default';
   }
 
   getStatusText(status: string): string {
     const statusTexts: { [key: string]: string } = {
-      'active': '活跃',
-      'inactive': '非活跃',
-      'error': '错误',
-      'available': '可用',
-      'in_use': '使用中',
+      active: '活跃',
+      inactive: '非活跃',
+      error: '错误',
+      available: '可用',
+      in_use: '使用中',
       'in-use': '使用中',
-      'creating': '创建中',
-      'deleting': '删除中'
+      creating: '创建中',
+      deleting: '删除中',
     };
     return statusTexts[status] || status;
   }
@@ -193,7 +203,7 @@ export class StorageVolumesComponent implements OnInit {
     this.isEditMode = false;
     this.currentVolume = null;
     this.resetVolumeForm();
-    
+
     // 在新建存储卷时加载相关数据
     if (!this.poolsLoaded) {
       this.loadStoragePools();
@@ -201,7 +211,7 @@ export class StorageVolumesComponent implements OnInit {
     if (!this.nodesLoaded) {
       this.loadNodes();
     }
-    
+
     this.isModalVisible = true;
   }
 
@@ -213,8 +223,8 @@ export class StorageVolumesComponent implements OnInit {
       pool_id: volume.pool_id,
       size_gb: volume.size_gb,
       volume_type: volume.volume_type || 'qcow2',
-      dataSource: 'blank' as 'blank' | 'url',  // 编辑时默认为空白
-      source: null as string | null  // 编辑时不支持外部URL
+      dataSource: 'blank' as 'blank' | 'url', // 编辑时默认为空白
+      source: null as string | null, // 编辑时不支持外部URL
     };
     this.isModalVisible = true;
   }
@@ -245,7 +255,7 @@ export class StorageVolumesComponent implements OnInit {
       pool_id: this.volumeFormData.pool_id!,
       size_gb: this.volumeFormData.size_gb,
       volume_type: this.volumeFormData.volume_type,
-      source: this.volumeFormData.dataSource === 'url' ? this.volumeFormData.source : null
+      source: this.volumeFormData.dataSource === 'url' ? this.volumeFormData.source : null,
     };
 
     this.storageService.createStorageVolume(createData).subscribe({
@@ -258,16 +268,16 @@ export class StorageVolumesComponent implements OnInit {
       error: (error) => {
         console.error('创建存储卷失败:', error);
         this.message.error('创建存储卷失败');
-      }
+      },
     });
   }
 
   updateVolume(): void {
     if (!this.currentVolume) return;
-    
+
     const updateData: UpdateStorageVolumeRequest = {
       name: this.volumeFormData.name,
-      size_gb: this.volumeFormData.size_gb
+      size_gb: this.volumeFormData.size_gb,
     };
 
     this.storageService.updateStorageVolume(this.currentVolume.id, updateData).subscribe({
@@ -280,7 +290,7 @@ export class StorageVolumesComponent implements OnInit {
       error: (error) => {
         console.error('更新存储卷失败:', error);
         this.message.error('更新存储卷失败');
-      }
+      },
     });
   }
 
@@ -295,7 +305,7 @@ export class StorageVolumesComponent implements OnInit {
         error: (error) => {
           console.error('删除存储卷失败:', error);
           this.message.error('删除存储卷失败');
-        }
+        },
       });
     }
   }
@@ -307,7 +317,7 @@ export class StorageVolumesComponent implements OnInit {
       size_gb: 20,
       volume_type: 'qcow2',
       dataSource: 'blank',
-      source: null
+      source: null,
     };
   }
 
@@ -342,7 +352,7 @@ export class StorageVolumesComponent implements OnInit {
   showCloneVolumeModal(volume: StorageVolume): void {
     this.cloneSourceVolume = volume;
     this.cloneFormData = {
-      targetName: `${volume.name}-clone`
+      targetName: `${volume.name}-clone`,
     };
     this.isCloneModalVisible = true;
   }
@@ -355,23 +365,24 @@ export class StorageVolumesComponent implements OnInit {
     }
 
     this.loading = true;
-    this.storageService.cloneVolume(
-      this.cloneSourceVolume.id,
-      this.cloneFormData.targetName.trim()
-    ).subscribe({
-      next: (clonedVolume: StorageVolume) => {
-        this.message.success('存储卷克隆成功');
-        this.isCloneModalVisible = false;
-        this.cloneSourceVolume = null;
-        this.cloneFormData = { targetName: '' };
-        this.loadStorageVolumes(this.pagination.current_page);
-      },
-      error: (error) => {
-        this.loading = false;
-        console.error('克隆存储卷失败:', error);
-        this.message.error('克隆存储卷失败: ' + (error.error?.message || error.message || '未知错误'));
-      }
-    });
+    this.storageService
+      .cloneVolume(this.cloneSourceVolume.id, this.cloneFormData.targetName.trim())
+      .subscribe({
+        next: (clonedVolume: StorageVolume) => {
+          this.message.success('存储卷克隆成功');
+          this.isCloneModalVisible = false;
+          this.cloneSourceVolume = null;
+          this.cloneFormData = { targetName: '' };
+          this.loadStorageVolumes(this.pagination.current_page);
+        },
+        error: (error) => {
+          this.loading = false;
+          console.error('克隆存储卷失败:', error);
+          this.message.error(
+            '克隆存储卷失败: ' + (error.error?.message || error.message || '未知错误'),
+          );
+        },
+      });
   }
 
   // 处理克隆取消
@@ -385,7 +396,7 @@ export class StorageVolumesComponent implements OnInit {
   showResizeVolumeModal(volume: StorageVolume): void {
     this.resizeVolume = volume;
     this.resizeFormData = {
-      newSizeGb: volume.size_gb
+      newSizeGb: volume.size_gb,
     };
     this.isResizeModalVisible = true;
   }
@@ -398,23 +409,24 @@ export class StorageVolumesComponent implements OnInit {
     }
 
     this.loading = true;
-    this.storageService.resizeVolume(
-      this.resizeVolume.id,
-      this.resizeFormData.newSizeGb
-    ).subscribe({
-      next: (resizedVolume: StorageVolume) => {
-        this.message.success('存储卷扩容成功');
-        this.isResizeModalVisible = false;
-        this.resizeVolume = null;
-        this.resizeFormData = { newSizeGb: 0 };
-        this.loadStorageVolumes(this.pagination.current_page);
-      },
-      error: (error) => {
-        this.loading = false;
-        console.error('扩容存储卷失败:', error);
-        this.message.error('扩容存储卷失败: ' + (error.error?.message || error.message || '未知错误'));
-      }
-    });
+    this.storageService
+      .resizeVolume(this.resizeVolume.id, this.resizeFormData.newSizeGb)
+      .subscribe({
+        next: (resizedVolume: StorageVolume) => {
+          this.message.success('存储卷扩容成功');
+          this.isResizeModalVisible = false;
+          this.resizeVolume = null;
+          this.resizeFormData = { newSizeGb: 0 };
+          this.loadStorageVolumes(this.pagination.current_page);
+        },
+        error: (error) => {
+          this.loading = false;
+          console.error('扩容存储卷失败:', error);
+          this.message.error(
+            '扩容存储卷失败: ' + (error.error?.message || error.message || '未知错误'),
+          );
+        },
+      });
   }
 
   // 处理扩容取消
@@ -422,5 +434,13 @@ export class StorageVolumesComponent implements OnInit {
     this.isResizeModalVisible = false;
     this.resizeVolume = null;
     this.resizeFormData = { newSizeGb: 0 };
+  }
+
+  // 快照管理
+  manageSnapshots(volume: StorageVolume): void {
+    // 跳转到快照管理页面，并传递存储卷ID作为查询参数
+    this.router.navigate(['/storage/snapshots'], {
+      queryParams: { volume_id: volume.id },
+    });
   }
 }
