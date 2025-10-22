@@ -60,6 +60,11 @@ impl SnapshotService {
             .await?
             .ok_or_else(|| anyhow!("存储卷不存在"))?;
 
+        // raw格式暂不支持创建快照
+        if volume.volume_type.to_lowercase() == "raw" {
+            return Err(anyhow!("raw 格式的存储卷暂不支持创建快照"));
+        }
+
         // 查找存储池以获取节点信息
         let pool = StoragePoolEntity::find_by_id(&volume.pool_id)
             .one(db)
