@@ -88,8 +88,8 @@
         <th nzWidth="200px">存储卷</th>
         <th nzWidth="120px">状态</th>
         <th nzWidth="120px">大小</th>
-        <th nzWidth="200px">快照标签</th>
-        <th>描述</th>
+        <th nzWidth="250px">快照ID</th>
+
         <th nzWidth="180px">创建时间</th>
         <th nzWidth="200px" nzRight>操作</th>
       </tr>
@@ -111,65 +111,72 @@
         </td>
         <td>{{ formatSize(snapshot.size_gb) }}</td>
         <td>
-          <span *ngIf="snapshot.snapshot_tag; else noTag">
-            {{ snapshot.snapshot_tag }}
+          <span class="id-text" nz-tooltip [nzTooltipTitle]="snapshot.id">
+            {{ snapshot.id }}
           </span>
-          <ng-template #noTag>
-            <span style="color: #999">-</span>
-          </ng-template>
         </td>
-        <td>
-          <span *ngIf="snapshot.description; else noDesc">
-            {{ snapshot.description }}
-          </span>
-          <ng-template #noDesc>
-            <span style="color: #999">-</span>
-          </ng-template>
-        </td>
+
         <td>{{ formatDate(snapshot.created_at) }}</td>
         <td nzRight>
-          <nz-space nzSize="small">
+          <div class="action-buttons">
+            <!-- 详情按钮 -->
             <button
-              *nzSpaceItem
               nz-button
+              nzType="link"
+              nzSize="small"
+              (click)="showDetailModal(snapshot)"
+              class="action-btn detail-btn"
+            >
+              <span nz-icon nzType="eye"></span>
+              详情
+            </button>
+
+            <!-- 编辑按钮 -->
+            <button
+              nz-button
+              nzType="link"
               nzSize="small"
               (click)="showEditModal(snapshot)"
-              nz-tooltip
-              nzTooltipTitle="编辑快照"
+              class="action-btn detail-btn"
             >
-              <i nz-icon nzType="edit"></i>
+              <span nz-icon nzType="edit"></span>
               编辑
             </button>
 
-            <button
-              *nzSpaceItem
-              nz-button
-              nzType="primary"
-              nzSize="small"
-              [disabled]="!canRestore(snapshot)"
-              (click)="restoreSnapshot(snapshot)"
-              nz-tooltip
-              nzTooltipTitle="恢复到此快照"
-            >
-              <i nz-icon nzType="rollback"></i>
-              恢复
-            </button>
+            <!-- 更多操作下拉菜单 -->
+            <a nz-dropdown [nzDropdownMenu]="menu" class="action-btn more-btn">
+              更多
+              <nz-icon nzType="down" />
+            </a>
+            <nz-dropdown-menu #menu="nzDropdownMenu">
+              <ul nz-menu nzSelectable>
+                <li
+                  nz-menu-item
+                  [nzDisabled]="!canRestore(snapshot)"
+                  (click)="restoreSnapshot(snapshot)"
+                >
+                  <span nz-icon nzType="rollback"></span>
+                  恢复快照
+                </li>
 
-            <button
-              *nzSpaceItem
-              nz-button
-              nzDanger
-              nzSize="small"
-              nz-popconfirm
-              nzPopconfirmTitle="确定要删除这个快照吗？"
-              nzPopconfirmPlacement="topRight"
-              [disabled]="!canDelete(snapshot)"
-              (nzOnConfirm)="deleteSnapshot(snapshot)"
-            >
-              <i nz-icon nzType="delete"></i>
-              删除
-            </button>
-          </nz-space>
+                <li nz-menu-divider></li>
+
+                <!-- 危险操作 -->
+                <li
+                  nz-menu-item
+                  nzDanger
+                  [nzDisabled]="!canDelete(snapshot)"
+                  nz-popconfirm
+                  nzPopconfirmTitle="确定要删除这个快照吗？"
+                  nzPopconfirmPlacement="left"
+                  (nzOnConfirm)="deleteSnapshot(snapshot)"
+                >
+                  <span nz-icon nzType="delete"></span>
+                  删除
+                </li>
+              </ul>
+            </nz-dropdown-menu>
+          </div>
         </td>
       </tr>
     </tbody>
@@ -262,4 +269,84 @@
       </nz-form-item>
     </form>
   </ng-container>
+</nz-modal>
+
+<!-- 快照详情模态框 -->
+<nz-modal
+  [(nzVisible)]="isDetailModalVisible"
+  nzTitle="快照详情"
+  [nzWidth]="800"
+  (nzOnCancel)="handleDetailCancel()"
+  [nzFooter]="null"
+>
+  <div *nzModalContent>
+    <nz-spin [nzSpinning]="snapshotDetailsLoading">
+      <div *ngIf="selectedSnapshot" class="snapshot-detail-content">
+        <!-- 基本信息 -->
+        <nz-card nzTitle="基本信息" [nzBordered]="false" class="detail-section">
+          <div class="detail-grid">
+            <!-- 短信息 - 左右排列 -->
+            <div class="detail-row">
+              <div class="detail-item">
+                <label>快照名称:</label>
+                <span>{{ selectedSnapshot.name }}</span>
+              </div>
+              <div class="detail-item">
+                <label>状态:</label>
+                <nz-tag [nzColor]="getStatusColor(selectedSnapshot.status)">
+                  {{ getStatusText(selectedSnapshot.status) }}
+                </nz-tag>
+              </div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-item">
+                <label>大小:</label>
+                <span>{{ formatSize(selectedSnapshot.size_gb) }}</span>
+              </div>
+              <div class="detail-item">
+                <label>快照标签:</label>
+                <span *ngIf="selectedSnapshot.snapshot_tag; else noTag">
+                  {{ selectedSnapshot.snapshot_tag }}
+                </span>
+                <ng-template #noTag>
+                  <span style="color: #999">-</span>
+                </ng-template>
+              </div>
+            </div>
+
+            <div class="detail-row">
+              <div class="detail-item">
+                <label>创建时间:</label>
+                <span>{{ formatDate(selectedSnapshot.created_at) }}</span>
+              </div>
+              <div class="detail-item">
+                <label>更新时间:</label>
+                <span>{{ formatDate(selectedSnapshot.updated_at) }}</span>
+              </div>
+            </div>
+
+            <!-- 长信息 - 单独占一行 -->
+            <div class="detail-item-full">
+              <label>快照ID:</label>
+              <span class="long-text">{{ selectedSnapshot.id }}</span>
+            </div>
+
+            <div class="detail-item-full">
+              <label>存储卷:</label>
+              <span class="long-text">
+                {{ selectedSnapshot.volume_name || selectedSnapshot.volume_id }}
+                <span style="color: #999">(ID: {{ selectedSnapshot.volume_id }})</span>
+              </span>
+            </div>
+
+            <div class="detail-item-full" *ngIf="selectedSnapshot.description">
+              <label>描述:</label>
+              <span class="long-text">{{ selectedSnapshot.description }}</span>
+            </div>
+          </div>
+        </nz-card>
+      </div>
+    </nz-spin>
+  </div>
 </nz-modal>

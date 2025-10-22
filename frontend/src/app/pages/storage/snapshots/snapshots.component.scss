@@ -84,6 +84,42 @@ nz-space {
   }
 }
 
+// ID文本样式
+.id-text {
+  color: #666;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  word-break: break-all;
+}
+
+// 操作按钮样式
+.action-buttons {
+  display: flex;
+  gap: 8px;
+
+  .action-btn {
+    padding: 4px 8px;
+    height: auto;
+    font-size: 12px;
+
+    &.detail-btn {
+      color: #52c41a;
+
+      &:hover {
+        color: #73d13d;
+      }
+    }
+
+    &.more-btn {
+      color: #1890ff;
+
+      &:hover {
+        color: #40a9ff;
+      }
+    }
+  }
+}
+
 // 模态框样式
 nz-modal {
   ::ng-deep {
@@ -154,4 +190,79 @@ nz-tag {
 // 空状态
 .ant-empty {
   padding: 40px 0;
+}
+
+// 快照详情样式
+.snapshot-detail-content {
+  .detail-section {
+    margin-bottom: 24px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  .detail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+
+      @media (max-width: 768px) {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+    }
+
+    .detail-item {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+
+      label {
+        font-weight: 600;
+        color: #666;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        min-width: 100px;
+        flex-shrink: 0;
+      }
+
+      span {
+        color: #333;
+        font-size: 14px;
+        flex: 1;
+      }
+    }
+
+    .detail-item-full {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+
+      label {
+        font-weight: 600;
+        color: #666;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        min-width: 100px;
+        flex-shrink: 0;
+      }
+
+      .long-text {
+        color: #333;
+        font-size: 14px;
+        flex: 1;
+        word-break: break-all;
+      }
+    }
+  }
 }

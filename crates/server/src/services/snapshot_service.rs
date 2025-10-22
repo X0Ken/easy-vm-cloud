@@ -77,7 +77,7 @@ impl SnapshotService {
             name: Set(dto.name.clone()),
             volume_id: Set(dto.volume_id.clone()),
             status: Set(SnapshotStatus::Creating.as_str().to_string()),
-            size_gb: Set(None),
+            size_gb: Set(Some(volume.size_gb)),
             snapshot_tag: Set(None),
             description: Set(dto.description.clone()),
             metadata: Set(dto.metadata.clone()),

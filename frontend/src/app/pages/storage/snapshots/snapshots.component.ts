@@ -24,6 +24,8 @@ import { NzSpaceModule } from 'ng-zorro-antd/space';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzDividerModule } from 'ng-zorro-antd/divider';
+import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
+import { NzSpinModule } from 'ng-zorro-antd/spin';
 
 import {
   SnapshotService,
@@ -62,6 +64,8 @@ import { WebSocketService } from '../../../services/websocket.service';
     NzCardModule,
     NzIconModule,
     NzDividerModule,
+    NzDropDownModule,
+    NzSpinModule,
   ],
   templateUrl: './snapshots.component.html',
   styleUrls: ['./snapshots.component.scss'],
@@ -97,6 +101,11 @@ export class SnapshotsComponent implements OnInit, OnDestroy {
   editForm!: FormGroup;
   editLoading = false;
   currentEditSnapshot: SnapshotResponse | null = null;
+
+  // 详情模态框
+  isDetailModalVisible = false;
+  selectedSnapshot: SnapshotResponse | null = null;
+  snapshotDetailsLoading = false;
 
   // 状态映射
   statusMap: { [key: string]: { color: string; text: string } } = {
@@ -453,6 +462,42 @@ export class SnapshotsComponent implements OnInit, OnDestroy {
     this.isEditModalVisible = false;
     this.editForm.reset();
     this.currentEditSnapshot = null;
+  }
+
+  /**
+   * 显示详情模态框
+   */
+  showDetailModal(snapshot: SnapshotResponse): void {
+    this.selectedSnapshot = snapshot;
+    this.isDetailModalVisible = true;
+    this.loadSnapshotDetails(snapshot.id);
+  }
+
+  /**
+   * 关闭详情模态框
+   */
+  handleDetailCancel(): void {
+    this.isDetailModalVisible = false;
+    this.selectedSnapshot = null;
+  }
+
+  /**
+   * 加载快照详情
+   */
+  loadSnapshotDetails(snapshotId: string): void {
+    this.snapshotDetailsLoading = true;
+    // 获取快照详细信息
+    this.snapshotService.getSnapshot(snapshotId).subscribe({
+      next: (snapshot) => {
+        this.selectedSnapshot = snapshot;
+        this.snapshotDetailsLoading = false;
+      },
+      error: (error) => {
+        console.error('加载快照详情失败:', error);
+        this.message.error('加载快照详情失败');
+        this.snapshotDetailsLoading = false;
+      },
+    });
   }
 
   /**
