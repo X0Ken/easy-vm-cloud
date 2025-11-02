@@ -14,8 +14,8 @@
     </div>
 
     <nz-spin [nzSpinning]="loading">
-      <nz-table 
-        #basicTable 
+      <nz-table
+        #basicTable
         [nzData]="vms"
         [nzPageSize]="pagination.per_page"
         [nzPageIndex]="pagination.current_page"
@@ -82,7 +82,7 @@
                   <span nz-icon nzType="eye"></span>
                   详情
                 </button>
-                
+
                 <!-- 更多操作下拉菜单 -->
                 <a nz-dropdown [nzDropdownMenu]="menu" class="action-btn more-btn">
                   更多
@@ -107,14 +107,19 @@
                       <span nz-icon nzType="reload"></span>
                       重启
                     </li>
-                    
+
+                    <li nz-menu-item *ngIf="vm.status === 'stopped' || vm.status === 'running'" (click)="showMigrateModal(vm)">
+                      <span nz-icon nzType="swap"></span>
+                      迁移
+                    </li>
+
                     <li nz-menu-item (click)="showEditModal(vm)">
                       <span nz-icon nzType="edit"></span>
                       编辑
                     </li>
-                    
+
                     <li nz-menu-divider></li>
-                    
+
                     <!-- 危险操作 -->
                     <li nz-menu-item nzDanger (click)="deleteVm(vm)">
                       <span nz-icon nzType="delete"></span>
@@ -147,9 +152,9 @@
         <nz-form-item>
           <nz-form-label [nzSpan]="6">虚拟机名称</nz-form-label>
           <nz-form-control [nzSpan]="18">
-            <input 
-              nz-input 
-              placeholder="请输入虚拟机名称" 
+            <input
+              nz-input
+              placeholder="请输入虚拟机名称"
               [(ngModel)]="formData.name"
               [ngModelOptions]="{standalone: true}"
               name="name"
@@ -160,17 +165,17 @@
         <nz-form-item>
           <nz-form-label [nzSpan]="6">部署节点</nz-form-label>
           <nz-form-control [nzSpan]="18">
-            <nz-select 
-              nzPlaceHolder="请选择部署节点" 
+            <nz-select
+              nzPlaceHolder="请选择部署节点"
               [(ngModel)]="formData.node_id"
               [ngModelOptions]="{standalone: true}"
               name="node_id"
               nzAllowClear
               [nzDisabled]="isEditingRunningVm"
             >
-              <nz-option 
-                *ngFor="let node of nodes" 
-                [nzValue]="node.id" 
+              <nz-option
+                *ngFor="let node of nodes"
+                [nzValue]="node.id"
                 [nzLabel]="node.hostname + ' (' + node.ip + ')'"
               ></nz-option>
             </nz-select>
@@ -180,7 +185,7 @@
         <nz-form-item>
           <nz-form-label [nzSpan]="6">CPU 核数</nz-form-label>
           <nz-form-control [nzSpan]="18">
-            <nz-input-number 
+            <nz-input-number
               [(ngModel)]="formData.vcpu"
               [ngModelOptions]="{standalone: true}"
               name="vcpu"
@@ -197,7 +202,7 @@
         <nz-form-item>
           <nz-form-label [nzSpan]="6">内存大小 (MB)</nz-form-label>
           <nz-form-control [nzSpan]="18">
-            <nz-input-number 
+            <nz-input-number
               [(ngModel)]="formData.memory_mb"
               [ngModelOptions]="{standalone: true}"
               name="memory_mb"
@@ -214,8 +219,8 @@
         <nz-form-item>
           <nz-form-label [nzSpan]="6">操作系统类型</nz-form-label>
           <nz-form-control [nzSpan]="18">
-            <nz-select 
-              nzPlaceHolder="请选择操作系统类型" 
+            <nz-select
+              nzPlaceHolder="请选择操作系统类型"
               [(ngModel)]="formData.os_type"
               [ngModelOptions]="{standalone: true}"
               name="os_type"
@@ -231,16 +236,16 @@
         <nz-form-item *ngIf="!isEditMode">
           <nz-form-label [nzSpan]="6">选择网络</nz-form-label>
           <nz-form-control [nzSpan]="18">
-            <nz-select 
-              nzPlaceHolder="请选择网络" 
+            <nz-select
+              nzPlaceHolder="请选择网络"
               [(ngModel)]="formData.selected_network_id"
               [ngModelOptions]="{standalone: true}"
               name="selected_network_id"
               nzAllowClear
             >
-              <nz-option 
-                *ngFor="let network of availableNetworks" 
-                [nzValue]="network.id" 
+              <nz-option
+                *ngFor="let network of availableNetworks"
+                [nzValue]="network.id"
                 [nzLabel]="network.name + ' (' + network.cidr + ')'"
               ></nz-option>
             </nz-select>
@@ -254,9 +259,9 @@
         <nz-form-item>
           <nz-form-control [nzSpan]="24">
             <div class="disk-config">
-              <nz-table 
-                [nzData]="formData.disks" 
-                [nzShowPagination]="false" 
+              <nz-table
+                [nzData]="formData.disks"
+                [nzShowPagination]="false"
                 [nzBordered]="true"
                 nzSize="small"
               >
@@ -271,22 +276,22 @@
                 <tbody>
                   <tr *ngFor="let disk of formData.disks; let i = index">
                     <td>
-                      <nz-select 
-                        nzPlaceHolder="请选择存储卷" 
+                      <nz-select
+                        nzPlaceHolder="请选择存储卷"
                         [(ngModel)]="disk.volume_id"
                         [ngModelOptions]="{standalone: true}"
                         nzAllowClear
                         style="width: 100%"
                       >
-                        <nz-option 
-                          *ngFor="let volume of getAvailableVolumes()" 
-                          [nzValue]="volume.id" 
+                        <nz-option
+                          *ngFor="let volume of getAvailableVolumes()"
+                          [nzValue]="volume.id"
                           [nzLabel]="volume.name + ' (' + volume.size_gb + 'GB)'"
                         ></nz-option>
                       </nz-select>
                     </td>
                     <td>
-                      <nz-select 
+                      <nz-select
                         [(ngModel)]="disk.bus_type"
                         [ngModelOptions]="{standalone: true}"
                         style="width: 100%"
@@ -297,7 +302,7 @@
                       </nz-select>
                     </td>
                     <td>
-                      <nz-select 
+                      <nz-select
                         [(ngModel)]="disk.device_type"
                         [ngModelOptions]="{standalone: true}"
                         style="width: 100%"
@@ -307,12 +312,12 @@
                       </nz-select>
                     </td>
                     <td>
-                      <button 
-                        nz-button 
-                        nzType="text" 
-                        nzDanger 
+                      <button
+                        nz-button
+                        nzType="text"
+                        nzDanger
                         nzSize="small"
-                        (click)="removeDisk(i)" 
+                        (click)="removeDisk(i)"
                         [disabled]="formData.disks.length === 1"
                       >
                         <i nz-icon nzType="delete"></i> 删除
@@ -358,7 +363,7 @@
               <span>{{ selectedVm.id }}</span>
             </div>
           </div>
-          
+
           <div class="detail-row">
             <div class="detail-item">
               <label>CPU核数:</label>
@@ -369,7 +374,7 @@
               <span>{{ formatMemory(selectedVm.memory_mb) }}</span>
             </div>
           </div>
-          
+
           <div class="detail-row">
             <div class="detail-item">
               <label>操作系统:</label>
@@ -384,7 +389,7 @@
               </nz-tag>
             </div>
           </div>
-          
+
           <div class="detail-row">
             <div class="detail-item">
               <label>创建时间:</label>
@@ -395,13 +400,13 @@
               <span>{{ selectedVm.updated_at | date:'yyyy-MM-dd HH:mm:ss' }}</span>
             </div>
           </div>
-          
+
           <!-- 长信息 - 单独占一行 -->
           <div class="detail-item-full">
             <label>虚拟机ID:</label>
             <span class="long-text">{{ selectedVm.id }}</span>
           </div>
-          
+
           <div class="detail-item-full">
             <label>部署节点:</label>
             <span class="long-text">{{ selectedVm.node_name }} (ID: {{ selectedVm.node_id }})</span>
@@ -453,10 +458,10 @@
                     </nz-tag>
                   </td>
                   <td>
-                    <button 
-                      nz-button 
-                      nzType="text" 
-                      nzDanger 
+                    <button
+                      nz-button
+                      nzType="text"
+                      nzDanger
                       nzSize="small"
                       nz-popconfirm
                       nzPopconfirmTitle="确定要移除这个存储卷吗？"
@@ -526,8 +531,8 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">选择存储卷</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-select 
-            nzPlaceHolder="请选择要挂载的存储卷" 
+          <nz-select
+            nzPlaceHolder="请选择要挂载的存储卷"
             [(ngModel)]="attachVolumeForm.volume_id"
             [ngModelOptions]="{standalone: true}"
             name="volume_id"
@@ -536,9 +541,9 @@
             (nzOnSearch)="searchAvailableVolumes($event)"
             [nzLoading]="availableVolumesLoading"
           >
-            <nz-option 
-              *ngFor="let volume of availableVolumes" 
-              [nzValue]="volume.id" 
+            <nz-option
+              *ngFor="let volume of availableVolumes"
+              [nzValue]="volume.id"
               [nzLabel]="volume.name + ' (' + volume.size_gb + 'GB)'"
             ></nz-option>
           </nz-select>
@@ -548,7 +553,7 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">总线类型</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-select 
+          <nz-select
             [(ngModel)]="attachVolumeForm.bus_type"
             [ngModelOptions]="{standalone: true}"
             name="bus_type"
@@ -563,7 +568,7 @@
       <nz-form-item>
         <nz-form-label [nzSpan]="6">设备类型</nz-form-label>
         <nz-form-control [nzSpan]="18">
-          <nz-select 
+          <nz-select
             [(ngModel)]="attachVolumeForm.device_type"
             [ngModelOptions]="{standalone: true}"
             name="device_type"
@@ -581,3 +586,81 @@
   共 {{ total }} 条记录
 </ng-template>
 
+<!-- 虚拟机迁移模态框 -->
+<nz-modal
+  [(nzVisible)]="isMigrateModalVisible"
+  nzTitle="虚拟机迁移"
+  [nzOkLoading]="migrateLoading"
+  (nzOnCancel)="handleMigrateCancel()"
+  (nzOnOk)="handleMigrateOk()"
+  [nzWidth]="600"
+>
+  <ng-container *nzModalContent>
+    <nz-alert
+      nzType="info"
+      nzMessage="迁移说明"
+      nzDescription="冷迁移：关机状态的虚拟机迁移，需要停机。热迁移：运行中的虚拟机在线迁移，几乎无中断。迁移过程中会传输虚拟机配置和存储数据，请确保目标节点有足够的资源。"
+      nzShowIcon
+      [nzCloseable]="false"
+      style="margin-bottom: 20px;"
+    ></nz-alert>
+
+    <form nz-form nzLayout="horizontal">
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">源虚拟机</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input
+            nz-input
+            [value]="selectedVm?.name"
+            disabled
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">当前节点</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <input
+            nz-input
+            [value]="selectedVm?.node_name"
+            disabled
+          />
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">目标节点</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-select
+            nzPlaceHolder="请选择目标节点"
+            [(ngModel)]="migrateForm.target_node_id"
+            [ngModelOptions]="{standalone: true}"
+            name="target_node_id"
+            nzAllowClear
+            style="width: 100%"
+          >
+            <nz-option
+              *ngFor="let node of getAvailableTargetNodes()"
+              [nzValue]="node.id.toString()"
+              [nzLabel]="node.hostname + ' (' + node.ip + ')'"
+            ></nz-option>
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label [nzSpan]="6">迁移类型</nz-form-label>
+        <nz-form-control [nzSpan]="18">
+          <nz-radio-group
+            [(ngModel)]="migrateForm.live"
+            [ngModelOptions]="{standalone: true}"
+            name="live"
+          >
+            <label nz-radio [nzValue]="false">冷迁移（关机状态）</label>
+            <label nz-radio [nzValue]="true">热迁移（运行状态）</label>
+          </nz-radio-group>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </ng-container>
+</nz-modal>

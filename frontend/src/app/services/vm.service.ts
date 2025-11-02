@@ -102,7 +102,7 @@ export class VmService {
     const params = new HttpParams()
       .set('page', page.toString())
       .set('per_page', perPage.toString());
-    
+
     return this.http.get<any>(this.apiConfig.buildUrl('/vms'), { params }).pipe(
       map(response => this.transformVMsResponse(response))
     );
@@ -176,9 +176,10 @@ export class VmService {
 
 
   // 迁移虚拟机
-  migrateVM(id: string, targetNodeId: string): Observable<void> {
+  migrateVM(id: string, targetNodeId: string, live: boolean = false): Observable<void> {
     return this.http.post<void>(this.apiConfig.buildUrl(`/vms/${id}/migrate`), {
-      target_node_id: targetNodeId
+      target_node_id: targetNodeId,
+      live: live,
     });
   }
 

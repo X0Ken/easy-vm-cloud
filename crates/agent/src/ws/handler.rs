@@ -158,6 +158,10 @@ impl RpcHandlerRegistry {
             // 虚拟机存储卷管理
             "attach_volume" => self.handle_attach_volume(payload).await,
             "detach_volume" => self.handle_detach_volume(payload).await,
+
+            // 虚拟机迁移
+            "migrate_vm" => self.handle_migrate_vm(payload).await,
+
             // 异步卷操作通过通知
             _ => {
                 return RpcMessage::error_response(
@@ -1638,5 +1642,208 @@ impl RpcHandlerRegistry {
         });
 
         Ok(())
+    }
+
+    /// 处理虚拟机迁移请求（冷迁移和热迁移）
+    async fn handle_migrate_vm(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, RpcError> {
+        let req: MigrateVmRequest = serde_json::from_value(payload).map_err(|e| RpcError {
+            code: RpcErrorCode::InvalidRequest,
+            message: format!("解析迁移请求失败: {}", e),
+            details: None,
+        })?;
+
+        let migration_type = if req.live_migration {
+            "热迁移"
+        } else {
+            "冷迁移"
+        };
+        info!(
+            "开始{}虚拟机: vm_id={}, target_node={}, target_addr={}",
+            migration_type, req.vm_id, req.target_node_id, req.target_node_address
+        );
+
+        // 检查虚拟机状态
+        let vm_exists = self
+            .hypervisor
+            .vm_exists(&req.vm_id)
+            .await
+            .map_err(|e| RpcError {
+                code: RpcErrorCode::InternalError,
+                message: format!("检查虚拟机状态失败: {}", e),
+                details: None,
+            })?;
+
+        // 热迁移要求虚拟机必须在运行状态
+        if req.live_migration && !vm_exists {
+            return Err(RpcError {
+                code: RpcErrorCode::InvalidRequest,
+                message: "热迁移要求虚拟机必须处于运行状态".to_string(),
+                details: None,
+            });
+        }
+
+        // 启动异步迁移任务
+        if let Some(ref notification_sender) = self.notification_sender {
+            let sender = notification_sender.clone();
+            let vm_id_clone = req.vm_id.clone();
+            let target_addr = req.target_node_address.clone();
+            let is_live = req.live_migration;
+            let hypervisor = self.hypervisor.clone();
+
+            tokio::spawn(async move {
+                // 发送迁移开始通知
+                let notification = RpcMessage::notification(
+                    "vm_migration_progress",
+                    serde_json::json!({
+                        "vm_id": vm_id_clone,
+                        "stage": "preparing",
+                        "progress_percent": 0.0,
+                        "message": if is_live { "准备热迁移虚拟机..." } else { "准备冷迁移虚拟机..." },
+                        "completed": false
+                    }),
+                );
+                if let Err(e) = sender.send(notification) {
+                    error!("发送迁移进度通知失败: {}", e);
+                }
+
+                if is_live {
+                    // 执行热迁移
+                    info!("执行热迁移: vm_id={}, target={}", vm_id_clone, target_addr);
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+                    // 构建目标 libvirt URI
+                    // 格式: qemu+tcp://target_address/system
+                    let target_uri = format!("qemu+tcp://{}/system", target_addr);
+
+                    // 发送迁移中通知
+                    let notification = RpcMessage::notification(
+                        "vm_migration_progress",
+                        serde_json::json!({
+                            "vm_id": vm_id_clone,
+                            "stage": "migrating",
+                            "progress_percent": 10.0,
+                            "message": "正在执行热迁移...",
+                            "completed": false
+                        }),
+                    );
+                    if let Err(e) = sender.send(notification) {
+                        error!("发送迁移进度通知失败: {}", e);
+                    }
+
+                    // 执行热迁移
+                    match hypervisor
+                        .live_migrate(&vm_id_clone, &target_uri, None)
+                        .await
+                    {
+                        Ok(_) => {
+                            info!("热迁移成功: vm_id={}", vm_id_clone);
+
+                            // 发送完成通知
+                            let notification = RpcMessage::notification(
+                                "vm_migration_progress",
+                                serde_json::json!({
+                                    "vm_id": vm_id_clone,
+                                    "stage": "completed",
+                                    "progress_percent": 100.0,
+                                    "message": "虚拟机热迁移完成",
+                                    "completed": true
+                                }),
+                            );
+                            if let Err(e) = sender.send(notification) {
+                                error!("发送迁移完成通知失败: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("热迁移失败: vm_id={}, error={}", vm_id_clone, e);
+
+                            // 发送失败通知
+                            let notification = RpcMessage::notification(
+                                "vm_migration_progress",
+                                serde_json::json!({
+                                    "vm_id": vm_id_clone,
+                                    "stage": "failed",
+                                    "progress_percent": 0.0,
+                                    "message": format!("虚拟机热迁移失败: {}", e),
+                                    "completed": true,
+                                    "error": e.to_string()
+                                }),
+                            );
+                            if let Err(e) = sender.send(notification) {
+                                error!("发送迁移失败通知失败: {}", e);
+                            }
+                        }
+                    }
+                } else {
+                    // 执行冷迁移 - 在共享存储环境下，只需要 undefine 虚拟机
+                    // Server 会更新虚拟机的节点信息，下次启动时会在目标节点 define
+                    info!("执行冷迁移: vm_id={} (共享存储模式)", vm_id_clone);
+
+                    // 发送 undefine 进度通知
+                    let notification = RpcMessage::notification(
+                        "vm_migration_progress",
+                        serde_json::json!({
+                            "vm_id": vm_id_clone,
+                            "stage": "undefining",
+                            "progress_percent": 50.0,
+                            "message": "正在从源节点取消虚拟机定义...",
+                            "completed": false
+                        }),
+                    );
+                    if let Err(e) = sender.send(notification) {
+                        error!("发送迁移进度通知失败: {}", e);
+                    }
+
+                    // 从源节点 undefine 虚拟机
+                    match hypervisor.undefine_vm(&vm_id_clone).await {
+                        Ok(_) => {
+                            info!("冷迁移成功: vm_id={} 已从源节点取消定义", vm_id_clone);
+
+                            // 发送完成通知
+                            let notification = RpcMessage::notification(
+                                "vm_migration_progress",
+                                serde_json::json!({
+                                    "vm_id": vm_id_clone,
+                                    "stage": "completed",
+                                    "progress_percent": 100.0,
+                                    "message": "虚拟机冷迁移完成，下次启动将在目标节点运行",
+                                    "completed": true
+                                }),
+                            );
+                            if let Err(e) = sender.send(notification) {
+                                error!("发送迁移完成通知失败: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("冷迁移失败: vm_id={}, error={}", vm_id_clone, e);
+
+                            // 发送失败通知
+                            let notification = RpcMessage::notification(
+                                "vm_migration_progress",
+                                serde_json::json!({
+                                    "vm_id": vm_id_clone,
+                                    "stage": "failed",
+                                    "progress_percent": 0.0,
+                                    "message": format!("虚拟机冷迁移失败: {}", e),
+                                    "completed": true,
+                                    "error": e.to_string()
+                                }),
+                            );
+                            if let Err(e) = sender.send(notification) {
+                                error!("发送迁移失败通知失败: {}", e);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "message": format!("虚拟机{}已开始", if req.live_migration { "热迁移" } else { "冷迁移" })
+        }))
     }
 }

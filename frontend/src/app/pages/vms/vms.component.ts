@@ -18,8 +18,18 @@ import { NzEmptyModule } from 'ng-zorro-antd/empty';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzGridModule } from 'ng-zorro-antd/grid';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
+import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { FormsModule } from '@angular/forms';
-import { VmService, VM, Node, CreateVMRequest, UpdateVMRequest, PaginatedResponse, DiskBusType, DiskDeviceType } from '../../services/vm.service';
+import {
+  VmService,
+  VM,
+  Node,
+  CreateVMRequest,
+  UpdateVMRequest,
+  PaginatedResponse,
+  DiskBusType,
+  DiskDeviceType,
+} from '../../services/vm.service';
 import { StorageService } from '../../services/storage.service';
 import { NetworkService } from '../../services/network.service';
 import { WebSocketService } from '../../services/websocket.service';
@@ -48,10 +58,11 @@ import { Subject } from 'rxjs';
     NzDropDownModule,
     NzGridModule,
     NzAlertModule,
-    FormsModule
+    NzRadioModule,
+    FormsModule,
   ],
   templateUrl: './vms.component.html',
-  styleUrls: ['./vms.component.scss']
+  styleUrls: ['./vms.component.scss'],
 })
 export class VmsComponent implements OnInit {
   vms: VM[] = [];
@@ -62,12 +73,12 @@ export class VmsComponent implements OnInit {
   isModalVisible = false;
   isEditMode = false;
   currentVm: VM | null = null;
-  
+
   // 运行中仅允许编辑名称
   get isEditingRunningVm(): boolean {
     return this.isEditMode && !!this.currentVm && this.currentVm.status === 'running';
   }
-  
+
   // 详情弹窗相关
   isDetailModalVisible = false;
   selectedVm: VM | null = null;
@@ -75,7 +86,7 @@ export class VmsComponent implements OnInit {
   vmNetworks: any[] = [];
   volumesLoading = false;
   networksLoading = false;
-  
+
   // 挂载存储卷相关
   isAttachVolumeModalVisible = false;
   attachVolumeLoading = false;
@@ -84,13 +95,22 @@ export class VmsComponent implements OnInit {
   attachVolumeForm = {
     volume_id: '',
     bus_type: 'virtio' as DiskBusType,
-    device_type: 'disk' as DiskDeviceType
+    device_type: 'disk' as DiskDeviceType,
   };
-  
+
+  // 虚拟机迁移相关
+  isMigrateModalVisible = false;
+  migrateLoading = false;
+  migrateForm = {
+    vm_id: '',
+    target_node_id: '',
+    live: false,
+  };
+
   // WebSocket 相关
   private destroy$ = new Subject<void>();
   
-  
+
   // 分页状态
   pagination = {
     current_page: 1,
@@ -100,7 +120,7 @@ export class VmsComponent implements OnInit {
     has_next: false,
     has_prev: false
   };
-  
+
   // 表单数据
   formData = {
     name: '',
@@ -140,9 +160,9 @@ export class VmsComponent implements OnInit {
     this.websocketService.vmStatusUpdates$
       .pipe(takeUntil(this.destroy$))
       .subscribe(update => {
-        console.log('收到 VM 状态更新:', update);
-        this.handleVmStatusUpdate(update);
-      });
+      console.log('收到 VM 状态更新:', update);
+      this.handleVmStatusUpdate(update);
+    });
 
     // 监听系统通知
     this.websocketService.systemNotifications$
@@ -163,12 +183,12 @@ export class VmsComponent implements OnInit {
       // 确保状态是有效的类型
       const validStatuses: ('running' | 'stopped' | 'stopping' | 'paused' | 'error')[] = 
         ['running', 'stopped', 'stopping', 'paused', 'error'];
-      
+
       if (validStatuses.includes(update.status as any)) {
         const oldStatus = vm.status;
         vm.status = update.status as 'running' | 'stopped' | 'stopping' | 'paused' | 'error';
         console.log(`VM ${vm.name} 状态已更新为: ${update.status}`);
-        
+
         // 根据状态变化显示相应的消息
         if (update.status === 'running' && oldStatus !== 'running') {
           this.message.success(`虚拟机 ${vm.name} 启动成功`);
@@ -301,7 +321,7 @@ export class VmsComponent implements OnInit {
     this.currentVm = null;
     this.resetForm();
     this.isModalVisible = true;
-    
+
     // 加载创建虚拟机所需的数据
     this.loadNodes();
     this.loadAvailableDisks();
@@ -344,7 +364,7 @@ export class VmsComponent implements OnInit {
       this.message.error('请至少添加一块磁盘');
       return;
     }
-    
+
     // 验证所有磁盘都选择了存储卷
     for (let i = 0; i < this.formData.disks.length; i++) {
       if (!this.formData.disks[i].volume_id) {
@@ -352,7 +372,7 @@ export class VmsComponent implements OnInit {
         return;
       }
     }
-    
+
     if (!this.formData.selected_network_id) {
       this.message.error('请选择网络');
       return;
@@ -374,10 +394,10 @@ export class VmsComponent implements OnInit {
         device_type: disk.device_type
       })),
       networks: [{
-        network_id: this.formData.selected_network_id!.toString(), // 网络ID转换为字符串
-        mac_address: null, // 让后端自动分配
-        ip_address: null, // 让后端自动分配
-        model: '', // 让Agent根据操作系统类型自动判断
+          network_id: this.formData.selected_network_id!.toString(), // 网络ID转换为字符串
+          mac_address: null, // 让后端自动分配
+          ip_address: null, // 让后端自动分配
+          model: '', // 让Agent根据操作系统类型自动判断
         bridge_name: null // 让后端自动处理
       }]
     };
@@ -398,7 +418,7 @@ export class VmsComponent implements OnInit {
 
   updateVm(): void {
     if (!this.currentVm) return;
-    
+
     // 运行中仅允许修改名称
     const updateData: UpdateVMRequest = this.isEditingRunningVm
       ? { name: this.formData.name }
@@ -483,8 +503,8 @@ export class VmsComponent implements OnInit {
       memory_mb: 1024,
       os_type: 'linux', // 默认操作系统类型
       disks: [{
-        volume_id: null,
-        bus_type: 'virtio',
+          volume_id: null,
+          bus_type: 'virtio',
         device_type: 'disk'
       }], // 默认包含一个磁盘配置
       selected_network_id: null
@@ -652,24 +672,24 @@ export class VmsComponent implements OnInit {
 
     this.attachVolumeLoading = true;
     this.vmService.attachVolume(
-      this.selectedVm.id,
-      this.attachVolumeForm.volume_id,
-      this.attachVolumeForm.bus_type,
+        this.selectedVm.id,
+        this.attachVolumeForm.volume_id,
+        this.attachVolumeForm.bus_type,
       this.attachVolumeForm.device_type
     ).subscribe({
-      next: (response) => {
-        this.message.success('存储卷挂载成功');
-        this.isAttachVolumeModalVisible = false;
-        this.attachVolumeLoading = false;
-        // 重新加载虚拟机存储卷信息
-        this.loadVmDetails(this.selectedVm!.id);
-      },
-      error: (error) => {
-        console.error('挂载存储卷失败:', error);
-        this.message.error('挂载存储卷失败: ' + (error.error?.message || error.message));
-        this.attachVolumeLoading = false;
+        next: (response) => {
+          this.message.success('存储卷挂载成功');
+          this.isAttachVolumeModalVisible = false;
+          this.attachVolumeLoading = false;
+          // 重新加载虚拟机存储卷信息
+          this.loadVmDetails(this.selectedVm!.id);
+        },
+        error: (error) => {
+          console.error('挂载存储卷失败:', error);
+          this.message.error('挂载存储卷失败: ' + (error.error?.message || error.message));
+          this.attachVolumeLoading = false;
       }
-    });
+      });
   }
 
   /**
@@ -737,5 +757,99 @@ export class VmsComponent implements OnInit {
       default:
         return busType;
     }
+  }
+
+  /**
+   * 显示虚拟机迁移弹窗
+   */
+  showMigrateModal(vm: VM): void {
+    // 检查虚拟机状态 - 只允许运行中或停止状态的虚拟机迁移
+    if (vm.status !== 'stopped' && vm.status !== 'running') {
+      this.message.warning('只有运行中或关机状态的虚拟机才能进行迁移');
+      return;
+    }
+
+    this.selectedVm = vm;
+    this.loadNodes();
+    // 根据虚拟机状态设置默认迁移类型
+    this.migrateForm = {
+      vm_id: vm.id,
+      target_node_id: '',
+      live: vm.status === 'running', // 运行中默认热迁移，关机默认冷迁移
+    };
+    this.isMigrateModalVisible = true;
+  }
+
+  /**
+   * 处理虚拟机迁移确认
+   */
+  handleMigrateOk(): void {
+    if (!this.selectedVm) {
+      this.message.error('虚拟机信息不存在');
+      return;
+    }
+
+    if (!this.migrateForm.target_node_id) {
+      this.message.error('请选择目标节点');
+      return;
+    }
+
+    // 确认目标节点与源节点不同
+    if (this.migrateForm.target_node_id === this.selectedVm.node_id) {
+      this.message.error('目标节点不能与源节点相同');
+      return;
+    }
+
+    // 验证迁移类型与虚拟机状态的兼容性
+    if (this.migrateForm.live && this.selectedVm.status !== 'running') {
+      this.message.error('热迁移要求虚拟机必须处于运行状态');
+      return;
+    }
+
+    if (!this.migrateForm.live && this.selectedVm.status !== 'stopped') {
+      this.message.error('冷迁移要求虚拟机必须处于关机状态');
+      return;
+    }
+
+    const migrationType = this.migrateForm.live ? '热迁移' : '冷迁移';
+    this.migrateLoading = true;
+    this.vmService
+      .migrateVM(this.selectedVm.id, this.migrateForm.target_node_id, this.migrateForm.live)
+      .subscribe({
+        next: () => {
+          this.message.success(`虚拟机${migrationType}已开始，请稍候...`);
+          this.isMigrateModalVisible = false;
+          this.migrateLoading = false;
+          // 刷新虚拟机列表
+          this.loadVms();
+        },
+        error: (error) => {
+          console.error('虚拟机迁移失败:', error);
+          this.message.error('虚拟机迁移失败: ' + (error.error?.message || error.message));
+          this.migrateLoading = false;
+        },
+      });
+  }
+
+  /**
+   * 取消虚拟机迁移
+   */
+  handleMigrateCancel(): void {
+    this.isMigrateModalVisible = false;
+    this.migrateForm = {
+      vm_id: '',
+      target_node_id: '',
+      live: false,
+    };
+  }
+
+  /**
+   * 获取可迁移的目标节点列表（排除当前节点）
+   */
+  getAvailableTargetNodes(): Node[] {
+    if (!this.selectedVm) {
+      return this.nodes;
+    }
+    return this.nodes.filter((node) => node.id.toString() !== this.selectedVm!.node_id);
   }
 }

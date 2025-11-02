@@ -1,21 +1,25 @@
 /// 虚拟机管理服务
-
 use chrono::Utc;
-use uuid::Uuid;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set};
-
-use crate::db::models::vm::{
-    CreateVmDto, UpdateVmDto, VmListResponse, VmResponse, VmStatus, DiskSpec, NetworkInterfaceSpec,
-    AttachVolumeDto, DetachVolumeDto, VmDiskResponse,
-    Entity as VmEntity, Column as VmColumn, ActiveModel as VmActiveModel,
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
-use crate::db::models::volume::{Entity as VolumeEntity, Column as VolumeColumn, ActiveModel as VolumeActiveModel};
-use crate::db::models::network::{Entity as NetworkEntity};
-use crate::db::models::node::{Entity as NodeEntity};
+use uuid::Uuid;
+
 use crate::app_state::AppState;
+use crate::db::models::network::Entity as NetworkEntity;
+use crate::db::models::node::Entity as NodeEntity;
+use crate::db::models::vm::{
+    ActiveModel as VmActiveModel, AttachVolumeDto, Column as VmColumn, CreateVmDto,
+    DetachVolumeDto, DiskSpec, Entity as VmEntity, NetworkInterfaceSpec, UpdateVmDto,
+    VmDiskResponse, VmListResponse, VmResponse, VmStatus,
+};
+use crate::db::models::volume::{
+    ActiveModel as VolumeActiveModel, Column as VolumeColumn, Entity as VolumeEntity,
+};
 use crate::services::network_service::NetworkService;
 use crate::ws::FrontendMessage;
-use tracing::{info, warn, error};
+use tracing::{debug, error, info, warn};
 
 pub struct VmService {
     state: AppState,
@@ -41,12 +45,12 @@ impl VmService {
     /// 将 VM 转换为 VmResponse，包含节点名称
     async fn vm_to_response(&self, vm: crate::db::models::vm::Vm) -> VmResponse {
         let mut response = VmResponse::from(vm.clone());
-        
+
         // 获取节点名称
         if let Some(node_id) = &vm.node_id {
             response.node_name = self.get_node_name(node_id).await;
         }
-        
+
         response
     }
 
@@ -65,12 +69,12 @@ impl VmService {
     }
 
     /// 创建虚拟机
-    /// 
+    ///
     /// 按照 vms.md 流程：API -> Server保存数据到DB -> UI提示成功
     /// Server保存元数据，agent无需操作。
     pub async fn create_vm(&self, dto: CreateVmDto) -> anyhow::Result<VmResponse> {
         let db = &self.state.sea_db();
-        
+
         // 生成 VM ID
         let vm_id = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -82,11 +86,11 @@ impl VmService {
                     .one(db)
                     .await?
                     .ok_or_else(|| anyhow::anyhow!("存储卷 {} 不存在", disk.volume_id))?;
-                
+
                 if volume.status != "available" {
                     return Err(anyhow::anyhow!("存储卷 {} 状态不可用: {}", disk.volume_id, volume.status));
                 }
-                
+
                 if volume.vm_id.is_some() {
                     return Err(anyhow::anyhow!("存储卷 {} 已被其他虚拟机使用", disk.volume_id));
                 }
@@ -98,14 +102,14 @@ impl VmService {
         let mut ip_allocations = Vec::new(); // 保存 IP 分配记录信息
         if let Some(ref networks) = dto.networks {
             let network_service = NetworkService::new(self.state.clone());
-            
+
             for network_spec in networks {
                 // 验证网络是否存在
                 let network = NetworkEntity::find_by_id(&network_spec.network_id)
                     .one(db)
                     .await?
                     .ok_or_else(|| anyhow::anyhow!("网络 {} 不存在", network_spec.network_id))?;
-                
+
                 // 为 VM 预留 IP（不设置 vm_id）
                 let ip_allocation = network_service
                     .allocate_ip(&network_spec.network_id)
@@ -116,7 +120,7 @@ impl VmService {
                 // 生成 MAC 地址（如果未提供）
                 let mac_address = network_spec.mac_address.clone()
                     .unwrap_or_else(|| Self::generate_mac_address());
-                
+
                 // 创建带 IP 的网络接口配置
                 let network_with_ip = NetworkInterfaceSpec {
                     network_id: network_spec.network_id.clone(),
@@ -128,20 +132,20 @@ impl VmService {
                         None => "br-default".to_string(),
                     }),
                 };
-                
+
                 network_interfaces_with_ip.push(network_with_ip);
-                
+
                 // 更新 IP 分配记录，添加 MAC 地址
                 use crate::db::models::ip_allocation::{Entity as IpAllocationEntity, ActiveModel as IpAllocationActiveModel};
                 let ip_record = IpAllocationEntity::find_by_id(&ip_allocation.id)
                     .one(db)
                     .await?
                     .ok_or_else(|| anyhow::anyhow!("IP 分配记录不存在"))?;
-                
+
                 let mut ip_active: IpAllocationActiveModel = ip_record.into();
                 ip_active.mac_address = Set(Some(mac_address));
                 ip_active.update(db).await?;
-                
+
                 // 保存 IP 分配记录信息，用于后续更新 vm_id
                 ip_allocations.push(ip_allocation);
             }
@@ -153,7 +157,7 @@ impl VmService {
             .as_ref()
             .map(|disks| serde_json::to_value(disks).ok())
             .flatten();
-        
+
         let network_interfaces_json = if !network_interfaces_with_ip.is_empty() {
             serde_json::to_value(&network_interfaces_with_ip).ok()
         } else {
@@ -192,7 +196,7 @@ impl VmService {
                     .one(db)
                     .await?
                     .ok_or_else(|| anyhow::anyhow!("存储卷 {} 不存在", disk.volume_id))?;
-                
+
                 let mut volume_active: VolumeActiveModel = volume.into();
                 volume_active.vm_id = Set(Some(vm_id.clone()));
                 volume_active.status = Set("in-use".to_string());
@@ -200,7 +204,7 @@ impl VmService {
                 volume_active.update(db).await?;
             }
         }
-        
+
         // VM 数据库记录创建完成后，更新 IP 分配的 vm_id
         let network_service = NetworkService::new(self.state.clone());
         for ip_allocation in ip_allocations {
@@ -330,7 +334,7 @@ impl VmService {
     }
 
     /// 删除虚拟机
-    /// 
+    ///
     /// 按照 vms.md 流程：
     /// API -> Server清理DB
     pub async fn delete_vm(&self, id: &str) -> anyhow::Result<()> {
@@ -349,7 +353,7 @@ impl VmService {
 
             // 释放 VM 的所有 IP 地址
             let network_service = NetworkService::new(self.state.clone());
-            
+
             // 从网络接口配置中获取所有网络 ID
             if let Some(ref network_interfaces) = vm.network_interfaces {
                 if let Ok(interfaces) = serde_json::from_value::<Vec<NetworkInterfaceSpec>>(network_interfaces.clone()) {
@@ -391,7 +395,7 @@ impl VmService {
     }
 
     /// 启动虚拟机
-    /// 
+    ///
     /// 按照 vms.md 流程：
     /// API -> Server记录DB -> UI提示进行中
     /// --(notify)-> agent 重新define xml，启动虚拟机 --(notify)-> Server更新db记录 -> UI提示完成
@@ -472,7 +476,7 @@ impl VmService {
     }
 
     /// 停止虚拟机
-    /// 
+    ///
     /// 按照 vms.md 流程：
     /// API -> Server记录DB -> UI提示进行中
     /// --(notify)-> agent 关机并undefine xml --(notify)-> Server更新db记录 -> UI提示完成
@@ -521,7 +525,7 @@ impl VmService {
     }
 
     /// 重启虚拟机（异步）
-    /// 
+    ///
     /// 按照 vms.md 流程：
     /// API -> Server记录DB -> UI提示进行中
     /// --(notify)-> agent 尝试软关机并启动，否则强制关机并启动 --(notify)-> Server更新db记录 -> UI提示完成
@@ -588,40 +592,94 @@ impl VmService {
             return Err(anyhow::anyhow!("源节点和目标节点相同"));
         }
 
-        // 更新状态为迁移中
-        let now = Utc::now();
-        let mut vm_active: VmActiveModel = vm.into();
-        vm_active.status = Set(VmStatus::Migrating.as_str().to_string());
-        vm_active.updated_at = Set(now.into());
-        vm_active.update(db).await?;
+        // 检查虚拟机状态
+        if !live && vm.status != VmStatus::Stopped.as_str() {
+            return Err(anyhow::anyhow!("冷迁移要求虚拟机必须处于关机状态"));
+        }
 
-        // TODO: 实际的迁移逻辑应该异步执行
-        // 这里简化处理，直接更新 node_id
-        
-        // 更新 VM 的节点 ID 和状态
-        let vm = VmEntity::find_by_id(id.to_string())
+        // 热迁移要求虚拟机必须在运行状态
+        if live && vm.status != VmStatus::Running.as_str() {
+            return Err(anyhow::anyhow!("热迁移要求虚拟机必须处于运行状态"));
+        }
+
+        // 查询目标节点信息
+        let target_node = NodeEntity::find_by_id(target_node_id.to_string())
             .one(db)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
-        
+            .ok_or_else(|| anyhow::anyhow!("目标节点不存在"))?;
+
+        if target_node.status != "online" {
+            return Err(anyhow::anyhow!("目标节点不在线"));
+        }
+
+        // 更新状态为迁移中，并将目标节点ID存储到 metadata 中
         let now = Utc::now();
-        let mut vm_active: VmActiveModel = vm.into();
-        vm_active.node_id = Set(Some(target_node_id.to_string()));
-        vm_active.status = Set(if live { 
-            VmStatus::Running.as_str() 
-        } else { 
-            VmStatus::Stopped.as_str() 
-        }.to_string());
+        let mut vm_active: VmActiveModel = vm.clone().into();
+        vm_active.status = Set(VmStatus::Migrating.as_str().to_string());
         vm_active.updated_at = Set(now.into());
+        
+        // 将目标节点ID存储到 metadata 中，以便迁移完成时使用
+        let mut metadata = vm.metadata.clone().unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert("migration_target_node_id".to_string(), serde_json::json!(target_node_id));
+            obj.insert("migration_is_live".to_string(), serde_json::json!(live));
+        }
+        vm_active.metadata = Set(Some(metadata));
+        
         vm_active.update(db).await?;
 
-        Ok(())
+        // 发送迁移请求到源节点 Agent
+        let agent_manager = &self.state.agent_manager;
+
+        let migrate_req = common::ws_rpc::types::MigrateVmRequest {
+            vm_id: id.to_string(),
+            target_node_id: target_node_id.to_string(),
+            target_node_address: target_node.ip_address.clone(),
+            live_migration: live,
+        };
+
+        let payload = serde_json::to_value(migrate_req)
+            .map_err(|e| anyhow::anyhow!("序列化迁移请求失败: {}", e))?;
+
+        // 发送 RPC 请求到源节点
+        match agent_manager
+            .call(
+                &source_node_id,
+                "migrate_vm",
+                payload,
+                std::time::Duration::from_secs(300),
+            )
+            .await
+        {
+            Ok(response) => {
+                info!(
+                    "虚拟机迁移请求已发送: vm_id={}, response={:?}",
+                    id, response
+                );
+
+                
+                Ok(())
+            }
+            Err(e) => {
+                // 迁移失败，恢复原状态
+                let vm = VmEntity::find_by_id(id.to_string())
+                    .one(db)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
+
+                let now = Utc::now();
+                let mut vm_active: VmActiveModel = vm.into();
+                vm_active.status = Set(VmStatus::Stopped.as_str().to_string());
+                vm_active.updated_at = Set(now.into());
+                vm_active.update(db).await?;
+
+                Err(anyhow::anyhow!("发送迁移请求失败: {}", e))
+            }
+        }
     }
 
-    
-
     /// 附加存储卷到虚拟机
-    /// 
+    ///
     /// 按照 vms.md 流程：
     /// API -> Server记录DB -> UI提示进行中
     /// --(notify)-> agent 热挂载磁盘，并标记持久 --(notify)-> Server更新db记录 -> UI提示完成
@@ -715,7 +773,7 @@ impl VmService {
     }
 
     /// 从虚拟机分离存储卷
-    /// 
+    ///
     /// 按照 vms.md 流程：
     /// API -> Server记录DB -> UI提示进行中
     /// --(notify)-> agent 热解除磁盘，并标记持久 --(notify)-> Server更新db记录 -> UI提示完成
@@ -829,7 +887,7 @@ impl VmService {
                     format!("hd{}", (b'a' + idx as u8) as char)
                 }
             };
-            
+
             // 查询volume详细信息
             if let Some(volume) = VolumeEntity::find_by_id(&disk.volume_id).one(db).await? {
                 result.push(VmDiskResponse {
@@ -983,6 +1041,109 @@ impl VmService {
         vm_active.update(db).await?;
 
         info!("虚拟机 {} 操作 {} 完成: success={}, message={}", vm_id, operation, success, message);
+        Ok(())
+    }
+
+    /// 处理虚拟机迁移进度通知
+    pub async fn handle_vm_migration_progress(
+        &self,
+        vm_id: &str,
+        stage: &str,
+        progress_percent: f64,
+        message: &str,
+        completed: bool,
+        error: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let db = &self.state.sea_db();
+        let now = Utc::now();
+
+        info!(
+            "虚拟机迁移进度: vm_id={}, stage={}, progress={}%, completed={}, message={}",
+            vm_id, stage, progress_percent, completed, message
+        );
+
+        // 查询虚拟机信息
+        let vm = VmEntity::find_by_id(vm_id.to_string())
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("虚拟机不存在"))?;
+
+        // 如果迁移完成（成功或失败），更新虚拟机状态和节点ID
+        if completed {
+            let mut vm_active: VmActiveModel = vm.clone().into();
+            
+            // 从 metadata 中获取迁移信息
+            let target_node_id = vm
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("migration_target_node_id"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            
+            let is_live = vm
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("migration_is_live"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            if let Some(error_msg) = error {
+                // 迁移失败
+                error!("虚拟机迁移失败: vm_id={}, error={}", vm_id, error_msg);
+                
+                // 恢复原状态（保持原节点）
+                // 如果是热迁移失败，虚拟机可能还在原节点运行
+                // 如果是冷迁移失败，虚拟机应该保持 stopped 状态
+                if is_live {
+                    // 热迁移失败，虚拟机可能还在原节点运行
+                    vm_active.status = Set(VmStatus::Running.as_str().to_string());
+                    self.notify_vm_status_update(vm_id, "running", Some(&format!("迁移失败: {}", error_msg))).await;
+                } else {
+                    // 冷迁移失败，保持 stopped 状态
+                    vm_active.status = Set(VmStatus::Stopped.as_str().to_string());
+                    self.notify_vm_status_update(vm_id, "stopped", Some(&format!("迁移失败: {}", error_msg))).await;
+                }
+            } else {
+                // 迁移成功
+                info!("虚拟机迁移成功: vm_id={}, target_node={:?}", vm_id, target_node_id);
+                
+                // 更新节点ID到目标节点
+                if let Some(target_node) = target_node_id {
+                    vm_active.node_id = Set(Some(target_node.clone()));
+                    info!("虚拟机节点已更新: vm_id={}, new_node_id={}", vm_id, target_node);
+                }
+                
+                // 更新虚拟机状态
+                if is_live {
+                    // 热迁移成功，虚拟机在目标节点运行
+                    vm_active.status = Set(VmStatus::Running.as_str().to_string());
+                    vm_active.started_at = Set(Some(now.into()));
+                    self.notify_vm_status_update(vm_id, "running", Some("虚拟机热迁移完成")).await;
+                } else {
+                    // 冷迁移成功，虚拟机在目标节点但处于停止状态
+                    vm_active.status = Set(VmStatus::Stopped.as_str().to_string());
+                    self.notify_vm_status_update(vm_id, "stopped", Some("虚拟机冷迁移完成，下次启动将在目标节点运行")).await;
+                }
+            }
+            
+            // 清理 metadata 中的迁移信息
+            let mut metadata = vm.metadata.clone().unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.remove("migration_target_node_id");
+                obj.remove("migration_is_live");
+            }
+            vm_active.metadata = Set(Some(metadata));
+            vm_active.updated_at = Set(now.into());
+            
+            vm_active.update(db).await?;
+        } else {
+            // 迁移进行中，只记录日志，不更新状态（状态仍然是 migrating）
+            debug!("虚拟机迁移进行中: vm_id={}, stage={}, progress={}%", vm_id, stage, progress_percent);
+            
+            // 可选：发送进度通知给前端
+            // 这里可以根据需要添加前端通知逻辑
+        }
+
         Ok(())
     }
 

@@ -289,6 +289,10 @@ async fn handle_notification(
             debug!("收到快照操作完成通知: node_id={}", connection.node_id);
             handle_snapshot_operation_completed(msg, connection, &state).await
         }
+        "vm_migration_progress" => {
+            debug!("收到虚拟机迁移进度通知: node_id={}", connection.node_id);
+            handle_vm_migration_progress(msg, connection, &state).await
+        }
         "node_resource_info" => {
             debug!("收到节点资源信息上报: node_id={}", connection.node_id);
             handle_node_resource_info(msg, connection, &state).await
@@ -528,6 +532,78 @@ async fn handle_get_storage_pool_info(
         }
     }
 
+    Ok(())
+}
+
+/// 处理虚拟机迁移进度通知
+async fn handle_vm_migration_progress(
+    msg: RpcMessage,
+    connection: &super::agent_manager::AgentConnection,
+    state: &crate::app_state::AppState,
+) -> Result<(), String> {
+    let payload = msg.payload.ok_or("通知消息缺少负载")?;
+
+    // 解析通知数据
+    let vm_id: String = payload
+        .get("vm_id")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 vm_id")?
+        .to_string();
+
+    let stage: String = payload
+        .get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let progress_percent: f64 = payload
+        .get("progress_percent")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+
+    let message: String = payload
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let completed: bool = payload
+        .get("completed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let error: Option<String> = payload
+        .get("error")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    info!(
+        "虚拟机迁移进度: vm_id={}, stage={}, progress={}%, completed={}, message={}",
+        vm_id, stage, progress_percent, completed, message
+    );
+
+    // 使用虚拟机服务处理迁移进度通知
+    let vm_service = crate::services::vm_service::VmService::new(state.clone());
+
+    if let Err(e) = vm_service
+        .handle_vm_migration_progress(
+            &vm_id,
+            &stage,
+            progress_percent,
+            &message,
+            completed,
+            error.as_deref(),
+        )
+        .await
+    {
+        error!("处理虚拟机迁移进度通知失败: {}", e);
+        return Err(format!("处理虚拟机迁移进度通知失败: {}", e));
+    }
+
+    info!(
+        "虚拟机迁移进度通知处理成功: vm_id={}, stage={}",
+        vm_id, stage
+    );
     Ok(())
 }
 
