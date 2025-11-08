@@ -20,7 +20,7 @@
 - ✅ NFS存储支持
 - 🚧 Ceph存储（计划中）
 - 🚧 iSCSI存储（计划中）
-- 🚧 LVN存储（计划中）
+- 🚧 LVM存储（计划中）
 
 ### 网络管理
 - ✅ IP 地址池管理（IPAM）
@@ -43,6 +43,7 @@
 ## 快速部署
 
 一键部署 Easy VM Cloud：
+适用于Ubuntu 24.04系统
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/x0ken/easy-vm-cloud/main/scripts/install.sh | sudo bash
